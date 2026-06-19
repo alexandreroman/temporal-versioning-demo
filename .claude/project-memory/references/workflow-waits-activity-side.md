@@ -10,9 +10,10 @@ In the pizza workflow, **all dwell/pacing is simulated as activity execution
 time — never `workflow.Sleep`/`workflow.NewTimer`**. There must be **no timers in
 the workflow history**.
 
-- Dwell durations (per-step and the drone per-attempt time) are injectable
-  `Activities` fields, set by the worker and **zero in unit tests** so the suite
-  stays fast.
+- Dwell durations (per-step and the drone per-attempt time) are **hardcoded inside
+  each activity function** as unexported package `var`s in `activities.go`
+  (`stepDwell`, `deliveredDwell`, `droneAttempt`); the white-box test (`package
+  pizza`) sets them to **zero via `init()`** so the suite stays fast.
 - The order is marked `Done` **before** the final `Deliver` activity runs, so the
   completed all-green stepper is visible during that activity's dwell (the
   dashboard lists only Running workflows).
@@ -23,5 +24,5 @@ This holds even for the drone retry backoff — it is activity-side, not a
 `workflow.Sleep`.
 
 **How to apply:** to make a step take time, add a context-aware wait inside its
-activity (not the workflow), kept as an injectable field that is zero in tests.
-Durations are in [[demo-timing]].
+activity (not the workflow), using a package-level duration `var` that the test
+zeroes. Durations are in [[demo-timing]].

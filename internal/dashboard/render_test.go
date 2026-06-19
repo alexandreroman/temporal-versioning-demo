@@ -23,11 +23,11 @@ func buildFixture() dashboard.DashboardState {
 	orders := []dashboard.LiveOrder{
 		{WorkflowID: "order-1", BuildID: "b2", ElapsedSec: 72, State: pizza.OrderState{
 			Version: "v2", Pizza: "Pepperoni",
-			Steps: pizza.StepsFor(pizza.V2), CurrentStep: 1,
+			Steps: v2Steps, CurrentStep: 1,
 		}},
 		{WorkflowID: "order-2", BuildID: "b3", ElapsedSec: 130, State: pizza.OrderState{
 			Version: "v3", Pizza: "Diavola",
-			Steps: pizza.StepsFor(pizza.V3), CurrentStep: 3, Failing: true,
+			Steps: v3Steps, CurrentStep: 3, Failing: true,
 		}},
 	}
 	return dashboard.BuildState(routing, summaries, orders)

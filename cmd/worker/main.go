@@ -71,7 +71,14 @@ func run(logger *slog.Logger) error {
 			DefaultVersioningBehavior: workflow.VersioningBehaviorPinned,
 		},
 	})
-	pizza.Register(w, v)
+	switch v {
+	case pizza.V1:
+		pizza.RegisterV1(w)
+	case pizza.V2:
+		pizza.RegisterV2(w)
+	case pizza.V3:
+		pizza.RegisterV3(w)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

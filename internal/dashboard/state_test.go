@@ -8,6 +8,20 @@ import (
 	"github.com/alexandreroman/temporal-versioning-demo/internal/pizza"
 )
 
+// v2Steps and v3Steps are the step lists the dashboard fixtures render. They mirror
+// the inline lists in the v2/v3 workflows; the dashboard only needs a plausibly
+// shaped stepper, not the workflow's own source of truth.
+var (
+	v2Steps = []pizza.StepLabel{
+		pizza.StepReceived, pizza.StepCooking, pizza.StepQualityCheck,
+		pizza.StepOutForDelivery, pizza.StepDelivered,
+	}
+	v3Steps = []pizza.StepLabel{
+		pizza.StepReceived, pizza.StepCooking, pizza.StepQualityCheck,
+		pizza.StepDroneDelivery, pizza.StepDelivered,
+	}
+)
+
 func TestBuildStateLabelsByCreateTimeAndCountsPinned(t *testing.T) {
 	base := time.Unix(1_000_000, 0)
 	summaries := []dashboard.VersionSummary{
@@ -19,15 +33,15 @@ func TestBuildStateLabelsByCreateTimeAndCountsPinned(t *testing.T) {
 	orders := []dashboard.LiveOrder{
 		{WorkflowID: "order-1", BuildID: "b2", State: pizza.OrderState{
 			Version: "v2", Pizza: "Pepperoni",
-			Steps: pizza.StepsFor(pizza.V2), CurrentStep: 1,
+			Steps: v2Steps, CurrentStep: 1,
 		}},
 		{WorkflowID: "order-2", BuildID: "b3", State: pizza.OrderState{
 			Version: "v3", Pizza: "Diavola",
-			Steps: pizza.StepsFor(pizza.V3), CurrentStep: 3, Failing: true,
+			Steps: v3Steps, CurrentStep: 3, Failing: true,
 		}},
 		{WorkflowID: "order-3", BuildID: "b2", State: pizza.OrderState{
 			Version: "v2", Pizza: "Marinara",
-			Steps: pizza.StepsFor(pizza.V2), CurrentStep: 0,
+			Steps: v2Steps, CurrentStep: 0,
 		}},
 	}
 
@@ -71,13 +85,13 @@ func TestBuildStateCountsPinnedByLabelWhenVisibilityOmitsBuildID(t *testing.T) {
 	// Visibility omits the build ID, but each order self-reports its version.
 	orders := []dashboard.LiveOrder{
 		{WorkflowID: "order-1", State: pizza.OrderState{
-			Version: "v2", Pizza: "Pepperoni", Steps: pizza.StepsFor(pizza.V2), CurrentStep: 1,
+			Version: "v2", Pizza: "Pepperoni", Steps: v2Steps, CurrentStep: 1,
 		}},
 		{WorkflowID: "order-2", State: pizza.OrderState{
-			Version: "v2", Pizza: "Marinara", Steps: pizza.StepsFor(pizza.V2), CurrentStep: 0,
+			Version: "v2", Pizza: "Marinara", Steps: v2Steps, CurrentStep: 0,
 		}},
 		{WorkflowID: "order-3", State: pizza.OrderState{
-			Version: "v3", Pizza: "Diavola", Steps: pizza.StepsFor(pizza.V3), CurrentStep: 3, Failing: true,
+			Version: "v3", Pizza: "Diavola", Steps: v3Steps, CurrentStep: 3, Failing: true,
 		}},
 	}
 

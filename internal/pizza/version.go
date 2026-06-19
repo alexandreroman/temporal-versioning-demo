@@ -21,17 +21,3 @@ func ParseVersion(s string) (Version, bool) {
 		return "", false
 	}
 }
-
-// StepsFor returns the ordered pipeline labels for a version's shape.
-func StepsFor(v Version) []StepLabel {
-	switch v {
-	case V1:
-		return []StepLabel{StepReceived, StepCooking, StepOutForDelivery, StepDelivered}
-	case V2:
-		return []StepLabel{StepReceived, StepCooking, StepQualityCheck, StepOutForDelivery, StepDelivered}
-	case V3:
-		return []StepLabel{StepReceived, StepCooking, StepQualityCheck, StepDroneDelivery, StepDelivered}
-	default:
-		return nil
-	}
-}

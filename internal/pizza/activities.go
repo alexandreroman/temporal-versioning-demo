@@ -8,26 +8,28 @@ import (
 	"go.temporal.io/sdk/activity"
 )
 
-// Activities groups the pizza step activities. All three durations are injected by
-// the worker and are zero in unit tests so the activities run instantly:
-//   - Dwell is the per-step work time the work activities pretend to take.
-//   - DroneAttempt is the time the drone spends on each failing delivery attempt.
-//   - DeliverDwell is the (shorter) work time of the final Deliver step.
+// This file holds the pizza step activities. Their per-step wait times are hardcoded
+// here (each activity owns its own pacing); a worker registers only the subset its
+// version runs (see RegisterVN in workflow_vN.go). Simulating the waits inside the
+// activities (instead of the workflow sleeping) keeps timers out of the workflow history.
 //
-// Simulating these waits inside the activities (instead of the workflow sleeping)
-// keeps timers out of the workflow history.
-type Activities struct {
-	// Dwell is how long each work activity pretends to take.
-	Dwell time.Duration
-	// DroneAttempt is how long each failing drone delivery attempt pretends to take.
-	DroneAttempt time.Duration
-	// DeliverDwell is the (shorter) dwell of the final Deliver step.
-	DeliverDwell time.Duration
-}
+// The durations are package vars rather than consts so unit tests can set them to zero
+// and keep the suite fast (see workflow_test.go); in production they pace the demo.
+var (
+	// stepDwell is the work time of each ordinary step, sized so a full order lasts ~60-90s.
+	stepDwell = 15 * time.Second
+	// deliveredDwell is the (shorter) wait of the final Deliver step: how long the
+	// completed (all-green) order stays on the dashboard before its workflow closes and
+	// the card leaves the board.
+	deliveredDwell = 7 * time.Second
+	// droneAttempt is how long each (failing) drone delivery attempt takes; it paces the
+	// v3 retry cadence from the activity side so no workflow timer is needed.
+	droneAttempt = 5 * time.Second
+)
 
 // dwell simulates the time a real step takes. It is context-aware so a cancelled
 // activity returns promptly. A zero or negative duration (e.g. in unit tests) is a no-op.
-func (a Activities) dwell(ctx context.Context, d time.Duration) error {
+func dwell(ctx context.Context, d time.Duration) error {
 	if d <= 0 {
 		return nil
 	}
@@ -40,39 +42,39 @@ func (a Activities) dwell(ctx context.Context, d time.Duration) error {
 }
 
 // Receive acknowledges a new order.
-func (a Activities) Receive(ctx context.Context, in OrderInput) error {
+func Receive(ctx context.Context, in OrderInput) error {
 	activity.GetLogger(ctx).Info("order received", "orderId", in.OrderID, "pizza", in.Pizza)
-	return a.dwell(ctx, a.Dwell)
+	return dwell(ctx, stepDwell)
 }
 
 // Cook prepares the pizza.
-func (a Activities) Cook(ctx context.Context, in OrderInput) error {
+func Cook(ctx context.Context, in OrderInput) error {
 	activity.GetLogger(ctx).Info("cooking", "orderId", in.OrderID)
-	return a.dwell(ctx, a.Dwell)
+	return dwell(ctx, stepDwell)
 }
 
 // QualityCheck inspects the pizza before delivery (added in v2).
-func (a Activities) QualityCheck(ctx context.Context, in OrderInput) error {
+func QualityCheck(ctx context.Context, in OrderInput) error {
 	activity.GetLogger(ctx).Info("quality check", "orderId", in.OrderID)
-	return a.dwell(ctx, a.Dwell)
+	return dwell(ctx, stepDwell)
 }
 
 // OutForDelivery dispatches the pizza to a courier.
-func (a Activities) OutForDelivery(ctx context.Context, in OrderInput) error {
+func OutForDelivery(ctx context.Context, in OrderInput) error {
 	activity.GetLogger(ctx).Info("out for delivery", "orderId", in.OrderID)
-	return a.dwell(ctx, a.Dwell)
+	return dwell(ctx, stepDwell)
 }
 
 // Deliver marks the order as delivered.
-func (a Activities) Deliver(ctx context.Context, in OrderInput) error {
+func Deliver(ctx context.Context, in OrderInput) error {
 	activity.GetLogger(ctx).Info("delivered", "orderId", in.OrderID)
-	return a.dwell(ctx, a.DeliverDwell)
+	return dwell(ctx, deliveredDwell)
 }
 
-// DroneDelivery is the buggy v3 step: each attempt spends DroneAttempt simulating the
-// flight, then always fails, so v3 orders stall and go red until they are recovered onto v2.
-func (a Activities) DroneDelivery(ctx context.Context, in OrderInput) error {
-	if err := a.dwell(ctx, a.DroneAttempt); err != nil {
+// DroneDelivery is the buggy v3 step: each attempt spends droneAttempt simulating the
+// flight, then always fails, so v3 orders stall and go red until they are recovered.
+func DroneDelivery(ctx context.Context, in OrderInput) error {
+	if err := dwell(ctx, droneAttempt); err != nil {
 		return err
 	}
 	activity.GetLogger(ctx).Warn("drone delivery failed", "orderId", in.OrderID)
