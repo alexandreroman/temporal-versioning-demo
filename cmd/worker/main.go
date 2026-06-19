@@ -9,6 +9,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
@@ -34,12 +35,12 @@ func main() {
 // run wires and runs the versioned worker until the process is signalled. It owns
 // all deferred cleanup so main can exit non-zero without skipping it.
 func run(logger *slog.Logger) error {
-	temporalAddress := getenv("TEMPORAL_ADDRESS", "127.0.0.1:7233")
-	namespace := getenv("TEMPORAL_NAMESPACE", "default")
+	temporalAddress := cmp.Or(os.Getenv("TEMPORAL_ADDRESS"), "127.0.0.1:7233")
+	namespace := cmp.Or(os.Getenv("TEMPORAL_NAMESPACE"), "default")
 	deploymentName := os.Getenv("TEMPORAL_DEPLOYMENT_NAME")
 	buildID := os.Getenv("TEMPORAL_WORKER_BUILD_ID")
-	taskQueue := getenv("PIZZA_TASK_QUEUE", pizza.TaskQueue)
-	version := getenv("PIZZA_VERSION", string(pizza.V1))
+	taskQueue := cmp.Or(os.Getenv("PIZZA_TASK_QUEUE"), pizza.TaskQueue)
+	version := cmp.Or(os.Getenv("PIZZA_VERSION"), string(pizza.V1))
 
 	v, ok := pizza.ParseVersion(version)
 	if !ok {
@@ -134,11 +135,4 @@ func publishVersionLabel(
 		}
 	}
 	logger.Warn("gave up publishing version metadata", "buildID", buildID)
-}
-
-func getenv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }

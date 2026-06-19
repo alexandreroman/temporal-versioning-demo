@@ -30,13 +30,13 @@
 
 {{- define "version" -}}
 {{- /* . is a VersionCard */ -}}
-<div class="ver{{if eq (printf "%s" .Status) "INACTIVE"}} inactive{{end}}" id="ver-{{.Version}}">
+<div class="ver{{if eq .Status "INACTIVE"}} inactive{{end}}" id="ver-{{.Version}}">
   <div class="vrow">
     {{- template "badge" .Version -}}
     {{- $chipID := printf "chip-%s-%s-%d" .Version .Status .TrafficPct -}}
-    {{- if eq (printf "%s" .Status) "CURRENT"}}<span id="{{$chipID}}" class="chip c-cur">CURRENT</span>
-    {{- else if eq (printf "%s" .Status) "RAMPING"}}<span id="{{$chipID}}" class="chip c-ramp">RAMPING {{.TrafficPct}}%</span>
-    {{- else if eq (printf "%s" .Status) "DRAINING"}}<span id="{{$chipID}}" class="chip c-drain">DRAINING</span>
+    {{- if eq .Status "CURRENT"}}<span id="{{$chipID}}" class="chip c-cur">CURRENT</span>
+    {{- else if eq .Status "RAMPING"}}<span id="{{$chipID}}" class="chip c-ramp">RAMPING {{.TrafficPct}}%</span>
+    {{- else if eq .Status "DRAINING"}}<span id="{{$chipID}}" class="chip c-drain">DRAINING</span>
     {{- else}}<span id="{{$chipID}}" class="chip c-inact">INACTIVE</span>{{end -}}
   </div>
   <div class="bar"><span id="bar-{{.Version}}" class="{{versionClass .Version}}"

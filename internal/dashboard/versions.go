@@ -1,4 +1,4 @@
-// Package-level helpers for Worker Deployment Version metadata.
+// Helpers for Worker Deployment Version metadata.
 package dashboard
 
 import (

@@ -7,6 +7,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
@@ -25,11 +26,11 @@ import (
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-	addr := "0.0.0.0:" + getenv("PORT", "8080")
-	temporalAddress := getenv("TEMPORAL_ADDRESS", "127.0.0.1:7233")
-	namespace := getenv("TEMPORAL_NAMESPACE", "default")
-	deploymentName := getenv("TEMPORAL_DEPLOYMENT_NAME", "pizza")
-	taskQueue := getenv("PIZZA_TASK_QUEUE", pizza.TaskQueue)
+	addr := "0.0.0.0:" + cmp.Or(os.Getenv("PORT"), "8080")
+	temporalAddress := cmp.Or(os.Getenv("TEMPORAL_ADDRESS"), "127.0.0.1:7233")
+	namespace := cmp.Or(os.Getenv("TEMPORAL_NAMESPACE"), "default")
+	deploymentName := cmp.Or(os.Getenv("TEMPORAL_DEPLOYMENT_NAME"), "pizza")
+	taskQueue := cmp.Or(os.Getenv("PIZZA_TASK_QUEUE"), pizza.TaskQueue)
 	pollInterval := durEnv("PIZZA_POLL_INTERVAL", time.Second, logger)
 	orderInterval := durEnv("PIZZA_ORDER_INTERVAL", 6*time.Second, logger)
 
@@ -87,13 +88,6 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "err", err)
 	}
-}
-
-func getenv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }
 
 func durEnv(key string, fallback time.Duration, logger *slog.Logger) time.Duration {
