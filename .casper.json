@@ -1,6 +1,6 @@
 {
   "workspace": {
-    "copyPatterns": [".env", ".env.local"],
+    "copyFiles": [".env", ".env.local"],
     "scripts": {
       "setup": "make worktree-ports",
       "teardown": "make app-down",
