@@ -1,0 +1,13 @@
+{
+  "workspace": {
+    "copyPatterns": [".env", ".env.local"],
+    "scripts": {
+      "setup": "make worktree-ports",
+      "teardown": "make app-down",
+      "run": "make app-up",
+      "deploy-v2": "make app-v2",
+      "deploy-v3": "make app-v3",
+      "dev": "make dev"
+    }
+  }
+}
