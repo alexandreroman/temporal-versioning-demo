@@ -21,12 +21,15 @@ endif
 ifneq (,$(wildcard compose.override.yaml))
 DASHBOARD_PORT     := $(shell sed -nE 's/.*"([0-9]+):8080".*/\1/p' compose.override.yaml | head -n1)
 TEMPORAL_GRPC_PORT := $(shell sed -nE 's/.*"([0-9]+):7233".*/\1/p' compose.override.yaml | head -n1)
+TEMPORAL_UI_PORT   := $(shell sed -nE 's/.*"([0-9]+):8233".*/\1/p' compose.override.yaml | head -n1)
 # Air's live-reload proxy takes the dashboard port; the raw backend it forwards
 # to gets its own port (dashboard + 3) so parallel worktrees never collide on it.
 PROXY_PORT         := $(DASHBOARD_PORT)
 BACKEND_PORT       := $(shell expr $(DASHBOARD_PORT) + 3)
 TEMPORAL_ADDRESS   ?= localhost:$(TEMPORAL_GRPC_PORT)
 else
+DASHBOARD_PORT     := 8080
+TEMPORAL_UI_PORT   := 8233
 PROXY_PORT         := 8090
 BACKEND_PORT       := 8080
 endif
@@ -43,6 +46,15 @@ BACKEND_BIN := ./bin/backend
 # Connection env shared by the host workers run from the `dev` target.
 WORKER_ENV = TEMPORAL_ADDRESS=$(TEMPORAL_ADDRESS) TEMPORAL_NAMESPACE=$(TEMPORAL_NAMESPACE) \
              TEMPORAL_DEPLOYMENT_NAME=$(DEPLOYMENT_NAME) PIZZA_TASK_QUEUE=$(PIZZA_TASK_QUEUE)
+
+# Banner printed once the Docker stack is up, listing where to reach it. The
+# ports come from the readback block above, so they follow any CASPER_PORT remap.
+define show_urls
+	@echo ""
+	@echo "The stack is up. Open:"
+	@echo "  Pizza Tracker    http://localhost:$(DASHBOARD_PORT)"
+	@echo "  Temporal Web UI  http://localhost:$(TEMPORAL_UI_PORT)"
+endef
 
 ##@ Infra
 
@@ -101,19 +113,23 @@ dev-stop: ## Kill orphaned host dev processes (Air backend + workers)
 
 .PHONY: app-up
 app-up: ## Bring up the full stack in Docker (Temporal + backend + worker v1)
-	docker compose up -d --build
+	docker compose up -d
+	$(show_urls)
 
 .PHONY: app-v1
 app-v1: ## Start the v1 worker in the Docker stack (demo: ship/restart v1)
-	docker compose up -d --build worker
+	docker compose up -d worker
+	$(show_urls)
 
 .PHONY: app-v2
 app-v2: ## Start the v2 worker in the Docker stack (demo: ship v2)
-	docker compose --profile v2 up -d --build
+	docker compose --profile v2 up -d
+	$(show_urls)
 
 .PHONY: app-v3
 app-v3: ## Start the v3 worker in the Docker stack (demo: ship v3)
-	docker compose --profile v3 up -d --build
+	docker compose --profile v3 up -d
+	$(show_urls)
 
 .PHONY: app-down
 app-down: ## Tear down the whole Docker stack including the v2/v3 workers
