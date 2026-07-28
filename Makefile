@@ -113,8 +113,10 @@ dev-stop: ## Kill orphaned host dev processes (Air backend + workers)
 
 .PHONY: app-up
 app-up: ## Bring up the full stack in Docker (Temporal + backend + worker v1)
-	docker compose up -d
+	# Print the URLs first, then run attached: `up` without -d streams the
+	# container logs until Ctrl-C stops the stack, so it never returns to make.
 	$(show_urls)
+	docker compose up
 
 .PHONY: app-v1
 app-v1: ## Start the v1 worker in the Docker stack (demo: ship/restart v1)
