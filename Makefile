@@ -26,7 +26,10 @@ TEMPORAL_UI_PORT   := $(shell sed -nE 's/.*"([0-9]+):8233".*/\1/p' compose.overr
 # to gets its own port (dashboard + 3) so parallel worktrees never collide on it.
 PROXY_PORT         := $(DASHBOARD_PORT)
 BACKEND_PORT       := $(shell expr $(DASHBOARD_PORT) + 3)
-TEMPORAL_ADDRESS   ?= localhost:$(TEMPORAL_GRPC_PORT)
+# Dial the dev server over IPv4: `localhost` also resolves to ::1, which the
+# IPv4-only dev server never answers, so the concurrent dials `dev` fires
+# (backend + workers v1/v2/v3) hang until `context deadline exceeded`.
+TEMPORAL_ADDRESS   ?= 127.0.0.1:$(TEMPORAL_GRPC_PORT)
 else
 DASHBOARD_PORT     := 8080
 TEMPORAL_UI_PORT   := 8233
