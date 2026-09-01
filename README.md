@@ -161,7 +161,9 @@ Run `make help` to list every target grouped by section.
 
 You can run the whole demo on your machine without a cluster.
 Both flows below start a Temporal dev server in Docker via
-Compose, so no `temporal-k8s` cluster is required.
+Compose, so no `temporal-k8s` cluster is required. Each flow
+prints its addresses when it starts; `make endpoints` reprints
+the Docker stack's.
 
 Locally the Worker Controller is not in play; the backend
 bootstraps v1 itself — see [Bootstrapping the first

@@ -5,7 +5,7 @@
 DEV_TARGETS := dev \
                app-up app-v1 app-v2 app-v3 app-down app-logs \
                infra-up infra-down infra-logs \
-               test check
+               test check endpoints
 GOALS := $(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))
 ifneq (,$(filter $(DEV_TARGETS),$(GOALS)))
 ifneq (,$(wildcard .env.local))
@@ -26,13 +26,22 @@ TEMPORAL_UI_PORT   := $(shell sed -nE 's/.*"([0-9]+):8233".*/\1/p' compose.overr
 # to gets its own port (dashboard + 3) so parallel worktrees never collide on it.
 PROXY_PORT         := $(DASHBOARD_PORT)
 BACKEND_PORT       := $(shell expr $(DASHBOARD_PORT) + 3)
-TEMPORAL_ADDRESS   ?= localhost:$(TEMPORAL_GRPC_PORT)
+# Dial the dev server over IPv4: `localhost` also resolves to ::1, which the
+# IPv4-only dev server never answers, so the concurrent dials `dev` fires
+# (backend + workers v1/v2/v3) hang until `context deadline exceeded`.
+TEMPORAL_ADDRESS   ?= 127.0.0.1:$(TEMPORAL_GRPC_PORT)
 else
 DASHBOARD_PORT     := 8080
 TEMPORAL_UI_PORT   := 8233
 PROXY_PORT         := 8090
 BACKEND_PORT       := 8080
 endif
+
+# The dashboard port `make endpoints` advertises. The Docker stack publishes the
+# dashboard port straight to the host, while the host `dev` flow puts Air's
+# live-reload proxy in front of the backend, so `dev` overrides this with
+# PROXY_PORT.
+APP_PORT ?= $(DASHBOARD_PORT)
 
 # Connection settings (override via .env.local or the environment).
 TEMPORAL_ADDRESS ?= 127.0.0.1:7233
@@ -47,13 +56,20 @@ BACKEND_BIN := ./bin/backend
 WORKER_ENV = TEMPORAL_ADDRESS=$(TEMPORAL_ADDRESS) TEMPORAL_NAMESPACE=$(TEMPORAL_NAMESPACE) \
              TEMPORAL_DEPLOYMENT_NAME=$(DEPLOYMENT_NAME) PIZZA_TASK_QUEUE=$(PIZZA_TASK_QUEUE)
 
-# Banner printed once the Docker stack is up, listing where to reach it. The
-# ports come from the readback block above, so they follow any CASPER_PORT remap.
-define show_urls
-	@echo ""
-	@echo "The stack is up. Open:"
-	@echo "  Pizza Tracker    http://localhost:$(DASHBOARD_PORT)"
-	@echo "  Temporal Web UI  http://localhost:$(TEMPORAL_UI_PORT)"
+# The workspace info panel mirrors `make endpoints`, so whichever command
+# brought the app up or down leaves it telling the truth. The CLI is on PATH
+# outside a workspace too, hence the CASPER_WORKSPACE_ID test alongside it, and
+# `|| true` keeps a panel update from ever failing the target that asked for it.
+# The optional argument carries the make variables the caller needs `endpoints`
+# to see, which is how `dev` publishes its proxy port instead of the Docker one.
+in-casper-workspace = [ -n "$$CASPER_WORKSPACE_ID" ] && command -v casper >/dev/null 2>&1
+
+define publish-endpoints
+$(in-casper-workspace) && $(MAKE) -s endpoints $(1) | casper info set - >/dev/null || true
+endef
+
+define clear-endpoints
+$(in-casper-workspace) && casper info clear >/dev/null || true
 endef
 
 ##@ Infra
@@ -81,7 +97,8 @@ dev: infra-up dev-stop ## Start Temporal + backend + workers v1/v2/v3, all hot-r
 	# other's binary.
 	# dev-stop pre-flight reclaims the dev ports and reaps orphans from a crashed session.
 	# Trap reaps the whole process group (kill 0) on exit/signal — now also on HUP (closed terminal).
-	@echo "Dashboard with live reload: http://localhost:$(PROXY_PORT)"
+	@$(MAKE) -s endpoints APP_PORT=$(PROXY_PORT)
+	@$(call publish-endpoints,APP_PORT=$(PROXY_PORT))
 	@trap 'kill 0' EXIT INT TERM HUP; \
 		( PORT=$(BACKEND_PORT) TEMPORAL_ADDRESS=$(TEMPORAL_ADDRESS) TEMPORAL_NAMESPACE=$(TEMPORAL_NAMESPACE) \
 			TEMPORAL_DEPLOYMENT_NAME=$(DEPLOYMENT_NAME) PIZZA_TASK_QUEUE=$(PIZZA_TASK_QUEUE) \
@@ -108,6 +125,7 @@ dev-stop: ## Kill orphaned host dev processes (Air backend + workers)
 		lsof -ti tcp:$$port -sTCP:LISTEN 2>/dev/null | xargs kill -9 2>/dev/null || true; \
 	done
 	@echo "Stopped host dev processes (best effort)."
+	@$(call clear-endpoints)
 
 ##@ Stack (Docker)
 
@@ -115,29 +133,34 @@ dev-stop: ## Kill orphaned host dev processes (Air backend + workers)
 app-up: ## Bring up the full stack in Docker (Temporal + backend + worker v1)
 	# Print the URLs first, then run attached: `up` without -d streams the
 	# container logs until Ctrl-C stops the stack, so it never returns to make.
-	$(show_urls)
+	@$(MAKE) -s endpoints
+	@$(call publish-endpoints)
 	docker compose up
 
 .PHONY: app-v1
 app-v1: ## Start the v1 worker in the Docker stack (demo: ship/restart v1)
 	docker compose up -d worker
-	$(show_urls)
+	@$(MAKE) -s endpoints
+	@$(call publish-endpoints)
 
 .PHONY: app-v2
 app-v2: ## Start the v2 worker in the Docker stack (demo: ship v2)
 	docker compose --profile v2 up -d
-	$(show_urls)
+	@$(MAKE) -s endpoints
+	@$(call publish-endpoints)
 
 .PHONY: app-v3
 app-v3: ## Start the v3 worker in the Docker stack (demo: ship v3)
 	docker compose --profile v3 up -d
-	$(show_urls)
+	@$(MAKE) -s endpoints
+	@$(call publish-endpoints)
 
 .PHONY: app-down
 app-down: ## Tear down the whole Docker stack including the v2/v3 workers
 	# Activate the v2/v3 profiles so their workers are removed too: a plain
 	# `docker compose down` leaves profiled containers running.
 	docker compose --profile v2 --profile v3 down
+	@$(call clear-endpoints)
 
 .PHONY: app-logs
 app-logs: ## Follow logs from every stack container
@@ -212,6 +235,19 @@ worktree-ports: ## Remap host ports off CASPER_PORT so parallel Casper worktrees
 	fi
 
 ##@ Helpers
+
+# Markdown on stdout, so the answer to "where is this app listening?" reads in a
+# terminal and pipes straight into whatever renders it. The ports come from the
+# readback block above, so they follow any CASPER_PORT remap.
+.PHONY: endpoints
+endpoints: ## Print this worktree's published endpoints as Markdown
+	@printf '%s\n' \
+		'# Pizza Tracker' \
+		'' \
+		'| Service | Address |' \
+		'| --- | --- |' \
+		'| Pizza Tracker | <http://localhost:$(APP_PORT)> |' \
+		'| Temporal Web UI | <http://localhost:$(TEMPORAL_UI_PORT)> |'
 
 .PHONY: help
 help: ## Show this help
