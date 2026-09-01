@@ -236,18 +236,21 @@ worktree-ports: ## Remap host ports off CASPER_PORT so parallel Casper worktrees
 
 ##@ Helpers
 
-# Markdown on stdout, so the answer to "where is this app listening?" reads in a
-# terminal and pipes straight into whatever renders it. The ports come from the
+# Markdown on stdout, so the answer to "where is this app listening?" reads in
+# a terminal and pipes straight into whatever renders it. The table columns
+# are padded to fixed widths so they stay aligned in a terminal even after
+# `make worktree-ports` remaps the ports to 5 digits: 15 chars fits the
+# longest label ("Temporal Web UI"), and 24 chars fits
+# `<http://localhost:XXXXX>` with a 5-digit port. The ports come from the
 # readback block above, so they follow any CASPER_PORT remap.
 .PHONY: endpoints
 endpoints: ## Print this worktree's published endpoints as Markdown
-	@printf '%s\n' \
-		'# Pizza Tracker' \
-		'' \
-		'| Service | Address |' \
-		'| --- | --- |' \
-		'| Pizza Tracker | <http://localhost:$(APP_PORT)> |' \
-		'| Temporal Web UI | <http://localhost:$(TEMPORAL_UI_PORT)> |'
+	@printf '%s\n\n' '# Pizza Tracker'
+	@printf '| %-15s | %-24s |\n' \
+		'Service' 'Address' \
+		'---------------' '------------------------' \
+		'Pizza Tracker' '<http://localhost:$(APP_PORT)>' \
+		'Temporal Web UI' '<http://localhost:$(TEMPORAL_UI_PORT)>'
 
 .PHONY: help
 help: ## Show this help
