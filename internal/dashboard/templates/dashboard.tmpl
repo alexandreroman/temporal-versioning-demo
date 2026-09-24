@@ -61,13 +61,17 @@
 {{- end -}}
 
 {{- define "controls" -}}
-{{- /* . is a DashboardState. Deploy is disabled with fewer than two versions; Rollback is disabled unless a version is ramping. */ -}}
+{{- /* . is a DashboardState. Both buttons are hidden with fewer than two versions; Rollback is disabled
+       unless a version is ramping. When hidden the region renders nothing at all (not even whitespace),
+       so the .controls:empty CSS rule collapses the row. */ -}}
+{{- if hasMultipleVersions .Versions -}}
 <button class="btn primary" type="button"
         hx-get="/deploy" hx-target="#modal-host" hx-swap="innerHTML"
-        hx-target-error="#toast"{{if not (hasMultipleVersions .Versions)}} disabled{{end}}>Deploy</button>
+        hx-target-error="#toast">Deploy</button>
 <button class="btn danger" type="button"
         hx-get="/rollback" hx-target="#modal-host" hx-swap="innerHTML"
         hx-target-error="#toast"{{if not (hasRamping .Versions)}} disabled{{end}}>Rollback</button>
+{{- end -}}
 {{- end -}}
 
 {{- define "publishing" -}}

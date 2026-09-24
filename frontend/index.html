@@ -810,6 +810,11 @@
         @apply mt-4 flex gap-2;
       }
 
+      /* The server renders an empty controls region while only one version exists; drop the row's margin too. */
+      .controls:empty {
+        @apply hidden;
+      }
+
       .controls .btn {
         @apply mt-0 flex-1;
       }
@@ -1244,8 +1249,9 @@
           <!-- Controls row, streamed server-side via SSE (sse-swap="controls")
                and morphed in place like #orders, so button nodes, htmx bindings
                and focus are preserved. The server re-renders both buttons every
-               frame. Deploy is disabled with fewer than two versions; Rollback
-               is disabled unless a version is currently ramping. (Recovery is
+               frame. Both are hidden with fewer than two versions (the empty
+               row collapses via .controls:empty); Rollback is disabled unless
+               a version is currently ramping. (Recovery is
                now a per-card amber "Fix" text button shown on a failing order,
                not a control here.) -->
           <div class="controls" id="controls" sse-swap="controls" hx-swap="morph:innerHTML"></div>

@@ -254,8 +254,8 @@ func hasRamping(versions []VersionCard) bool {
 }
 
 // hasMultipleVersions reports whether at least two worker versions are known.
-// The controls template uses it to disable the Deploy button when only one
-// version exists (deploying/ramping needs a second version to target).
+// The controls template uses it to hide the Deploy and Rollback buttons when
+// only one version exists (deploying/ramping needs a second version to target).
 func hasMultipleVersions(versions []VersionCard) bool {
 	return len(versions) > 1
 }

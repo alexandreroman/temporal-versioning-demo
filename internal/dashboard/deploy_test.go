@@ -103,11 +103,11 @@ func TestRendererControls(t *testing.T) {
 		t.Fatalf("NewRenderer: %v", err)
 	}
 
-	// Deploy and Rollback always render; each carries a disabled attribute
-	// immediately before its label, so assert on the precise `disabled>Deploy`
-	// and `disabled>Rollback` markup. Recover is no longer a control here — it is
-	// now a per-card action.
-	always := []string{
+	// With two or more versions Deploy and Rollback both render; a disabled
+	// button carries its disabled attribute immediately before its label, so
+	// assert on the precise `disabled>Deploy` and `disabled>Rollback` markup.
+	// Recover is a per-card action, never a control here.
+	buttons := []string{
 		`hx-get="/deploy"`,   // Deploy opens the modal host
 		`hx-get="/rollback"`, // Rollback opens the modal host
 	}
@@ -115,45 +115,56 @@ func TestRendererControls(t *testing.T) {
 	tests := []struct {
 		name             string
 		state            DashboardState
-		deployDisabled   bool
+		wantButtons      bool
 		rollbackDisabled bool
 	}{
 		{
-			name:             "no ramp disables rollback",
+			name:        "no versions hides both buttons",
+			state:       DashboardState{},
+			wantButtons: false,
+		},
+		{
+			name:        "single version hides both buttons",
+			state:       versionsState("v1", "v1"),
+			wantButtons: false,
+		},
+		{
+			name:             "multiple versions without ramp disable rollback",
 			state:            versionsState("v2", "v1", "v2", "v3"),
-			deployDisabled:   false,
+			wantButtons:      true,
 			rollbackDisabled: true,
 		},
 		{
-			name:             "ramping enables rollback",
+			name:             "multiple versions ramping enable both buttons",
 			state:            rampingState("v3", 25, "v2", "v1", "v2", "v3"),
-			deployDisabled:   false,
+			wantButtons:      true,
 			rollbackDisabled: false,
-		},
-		{
-			name:             "single version disables deploy",
-			state:            versionsState("v1", "v1"),
-			deployDisabled:   true,
-			rollbackDisabled: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			out := renderRegion(t, r, "controls", tt.state)
-			for _, w := range always {
+			if !tt.wantButtons {
+				// Not even whitespace: the row is only collapsed by .controls:empty when truly empty.
+				if out != "" {
+					t.Errorf("controls output = %q, want empty", out)
+				}
+				return
+			}
+			for _, w := range buttons {
 				if !strings.Contains(out, w) {
 					t.Errorf("controls output missing %q\n--- output ---\n%s", w, out)
 				}
 			}
-			if got := strings.Contains(out, `disabled>Deploy`); got != tt.deployDisabled {
-				t.Errorf("Deploy disabled = %v, want %v\n--- output ---\n%s", got, tt.deployDisabled, out)
+			if strings.Contains(out, `disabled>Deploy`) {
+				t.Errorf("Deploy must be enabled with multiple versions\n--- output ---\n%s", out)
 			}
 			if got := strings.Contains(out, `disabled>Rollback`); got != tt.rollbackDisabled {
 				t.Errorf("Rollback disabled = %v, want %v\n--- output ---\n%s", got, tt.rollbackDisabled, out)
 			}
 			if strings.Contains(out, `/recover`) {
-				t.Errorf("controls must not carry a recover button anymore\n--- output ---\n%s", out)
+				t.Errorf("controls must not carry a recover button\n--- output ---\n%s", out)
 			}
 		})
 	}
