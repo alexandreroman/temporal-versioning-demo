@@ -41,7 +41,7 @@
 
 {{- define "version" -}}
 {{- /* . is a VersionCard */ -}}
-<div class="ver{{if eq .Status "INACTIVE"}} inactive{{end}}" id="ver-{{.Version}}">
+<div class="ver" id="ver-{{.Version}}">
   <div class="vrow">
     {{- template "badge" .Version -}}
     {{- $chipID := printf "chip-%s-%s-%d" .Version .Status .TrafficPct -}}

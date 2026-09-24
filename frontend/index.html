@@ -754,7 +754,6 @@
           animation: none;
         }
 
-        .ver,
         .bar > span,
         .chip,
         .pub-btn,
@@ -769,7 +768,6 @@
       .ver {
         @apply mb-[11px] rounded-xl border border-l-[3px] border-white/10 border-l-uv bg-white/[0.04] p-3
           backdrop-blur-sm;
-        transition: opacity 0.3s ease;
       }
 
       .ver:has(.vb.b-v2) {
@@ -778,10 +776,6 @@
 
       .ver:has(.vb.b-v3) {
         @apply border-l-amber;
-      }
-
-      .ver.inactive {
-        @apply opacity-55;
       }
 
       .vrow {
