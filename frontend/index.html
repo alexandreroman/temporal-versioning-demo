@@ -543,9 +543,10 @@
 
       /* ===== Toast ===== */
       /* Sized to its message but capped to the viewport minus 18px margins, so a
-         long message wraps instead of overflowing narrow screens. */
+         long message wraps instead of overflowing narrow screens. Stacked above the modal scrim (z-50)
+         because Deploy/Rollback errors surface here while the modal stays open. */
       .toast {
-        @apply pointer-events-none fixed bottom-[18px] left-1/2 z-10 w-max max-w-[calc(100vw-36px)]
+        @apply pointer-events-none fixed bottom-[18px] left-1/2 z-[60] w-max max-w-[calc(100vw-36px)]
           -translate-x-1/2 rounded-[9px] border border-[#7f1d1d] bg-[#3f1212] px-4 py-2.5 text-center
           text-[12px] font-semibold text-[#fca5a5] opacity-0;
       }
