@@ -679,15 +679,6 @@
           text-[10px] leading-[1.1] text-neutral-600 transition-colors duration-[400ms];
       }
 
-      /* Anchor the end labels inward so they never overflow the card edge. */
-      .node:first-child .lbl {
-        @apply left-0 translate-x-0 text-left;
-      }
-
-      .node:last-child .lbl {
-        @apply left-auto right-0 translate-x-0 text-right;
-      }
-
       .node.done .dot {
         @apply border-lime bg-lime text-[#0c0a1b];
       }
