@@ -9,10 +9,11 @@ import (
 )
 
 // droneRetryWindow bounds how long v3 keeps retrying the broken drone before giving up.
-// An hour comfortably covers a live demo (the presenter recovers stuck orders within
-// minutes) while capping the Temporal Cloud actions a demo left unattended can burn.
+// 15 minutes covers a live demo (the presenter recovers stuck orders within minutes)
+// while capping the Temporal Cloud actions a demo left unattended can burn: about 25-30
+// attempts per stuck order at the ~35s cadence set by droneRetryMaxInterval.
 // It is a var rather than a const so unit tests can shrink it (see workflow_test.go).
-var droneRetryWindow = time.Hour
+var droneRetryWindow = 15 * time.Minute
 
 // droneRetryMaxInterval caps the drone's exponential retry backoff (default 1s initial
 // interval, doubled on each attempt). Once capped, a stuck order retries roughly every

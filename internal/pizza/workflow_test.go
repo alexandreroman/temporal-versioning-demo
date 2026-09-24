@@ -156,7 +156,7 @@ func TestV3StallsOnDrone(t *testing.T) {
 func TestV3FailsOnceDroneRetryWindowElapses(t *testing.T) {
 	// The test environment caps "unlimited" retries at 10 attempts. On its auto-skipping
 	// mock clock the backoff (1s, 2s, 4s, ... capped at droneRetryMaxInterval) spreads
-	// those attempts over ~2.5 minutes, so the real one-hour window can never be the limit
+	// those attempts over ~2.5 minutes, so the real 15-minute window can never be the limit
 	// here. Shrink the window to 5s instead: it still fits a few attempts (at 0s, 1s and
 	// 3s), and failing within it proves the window, not the test environment's attempt
 	// cap, ended the drone's retries.

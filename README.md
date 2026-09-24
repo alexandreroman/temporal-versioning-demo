@@ -65,8 +65,8 @@ default.)
 always errors, so v3 orders keep retrying via Temporal's
 native durable retry, go red, and stall (Running) until they
 are recovered onto the healthy version. An order nobody
-recovers retries for up to an hour, then fails and leaves the
-dashboard, so a demo left unattended does not keep burning
+recovers retries for up to 15 minutes, then fails and leaves
+the dashboard, so a demo left unattended does not keep burning
 Temporal actions.
 
 ## Architecture
