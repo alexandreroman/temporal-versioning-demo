@@ -2,11 +2,14 @@ package pizza
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/converter"
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 )
 
@@ -93,10 +96,10 @@ func TestV3StallsOnDrone(t *testing.T) {
 	env := ts.NewTestWorkflowEnvironment()
 	registerActivities(env)
 
-	// v3 stalls on the always-failing drone. With native unlimited retry the drone
-	// activity is retried forever, so the workflow never completes — it stays Running,
-	// marked failing. We therefore inspect the stalled state once the retry loop is
-	// observed and then cancel, rather than running to completion (which would hang).
+	// v3 stalls on the always-failing drone. Native retry keeps re-attempting the drone
+	// activity for droneRetryWindow, so the workflow stays Running, marked failing, until
+	// it is recovered or the window elapses. We therefore inspect the stalled state once
+	// the retry loop is observed and then cancel, rather than running to completion.
 	//
 	// Waiting for the *second* DroneDelivery start is the deterministic signal: it
 	// proves the first attempt already failed and the durable retry is under way, so
@@ -133,7 +136,7 @@ func TestV3StallsOnDrone(t *testing.T) {
 				t.Errorf("expected drone step to be failing, got %+v", st)
 			}
 			if st.Done {
-				t.Errorf("v3 should never complete, got Done=true")
+				t.Errorf("v3 must not complete while the drone is failing, got Done=true")
 			}
 			if st.Steps[st.CurrentStep] != StepDroneDelivery {
 				t.Errorf("expected current step Drone, got %v", st.Steps[st.CurrentStep])
@@ -147,5 +150,52 @@ func TestV3StallsOnDrone(t *testing.T) {
 
 	if !asserted {
 		t.Fatal("drone never reached its retry loop; stall not observed")
+	}
+}
+
+func TestV3FailsOnceDroneRetryWindowElapses(t *testing.T) {
+	// The test environment caps "unlimited" retries at 10 attempts. On its auto-skipping
+	// mock clock the backoff (1s, 2s, 4s, ... capped at droneRetryMaxInterval) spreads
+	// those attempts over ~2.5 minutes, so the real one-hour window can never be the limit
+	// here. Shrink the window to 5s instead: it still fits a few attempts (at 0s, 1s and
+	// 3s), and failing within it proves the window, not the test environment's attempt
+	// cap, ended the drone's retries.
+	original := droneRetryWindow
+	droneRetryWindow = 5 * time.Second
+	t.Cleanup(func() { droneRetryWindow = original })
+
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	registerActivities(env)
+
+	droneStarts := 0
+	var firstDroneStart time.Time
+	env.SetOnActivityStartedListener(
+		func(info *activity.Info, _ context.Context, _ converter.EncodedValues) {
+			if info.ActivityType.Name != "DroneDelivery" {
+				return
+			}
+			droneStarts++
+			if droneStarts == 1 {
+				firstDroneStart = env.Now()
+			}
+		},
+	)
+
+	env.ExecuteWorkflow(PizzaOrderV3, OrderInput{OrderID: 4, Pizza: "Capricciosa"})
+
+	if !env.IsWorkflowCompleted() {
+		t.Fatal("v3 should end once the drone retry window elapses")
+	}
+	err := env.GetWorkflowError()
+	var activityErr *temporal.ActivityError
+	if !errors.As(err, &activityErr) {
+		t.Fatalf("expected the drone's activity error, got %v", err)
+	}
+	if droneStarts < 2 {
+		t.Fatalf("expected the drone to be retried, got %d attempt(s)", droneStarts)
+	}
+	if elapsed := env.Now().Sub(firstDroneStart); elapsed > droneRetryWindow {
+		t.Fatalf("drone retried for %v, want at most the %v retry window", elapsed, droneRetryWindow)
 	}
 }

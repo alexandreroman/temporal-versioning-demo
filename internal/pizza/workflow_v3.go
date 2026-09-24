@@ -8,6 +8,18 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
+// droneRetryWindow bounds how long v3 keeps retrying the broken drone before giving up.
+// An hour comfortably covers a live demo (the presenter recovers stuck orders within
+// minutes) while capping the Temporal Cloud actions a demo left unattended can burn.
+// It is a var rather than a const so unit tests can shrink it (see workflow_test.go).
+var droneRetryWindow = time.Hour
+
+// droneRetryMaxInterval caps the drone's exponential retry backoff (default 1s initial
+// interval, doubled on each attempt). Once capped, a stuck order retries roughly every
+// ~35s (a 5s attempt plus a 30s wait): about 100 attempts per hour, which keeps Temporal
+// Cloud actions low without any visible change on the dashboard (it shows no retry counter).
+const droneRetryMaxInterval = 30 * time.Second
+
 // PizzaOrderV3 is v2 with the courier hand-off replaced by an (intentionally broken)
 // drone delivery — a regression a team might ship and then roll back.
 func PizzaOrderV3(ctx workflow.Context, in OrderInput) error {
@@ -23,12 +35,13 @@ func PizzaOrderV3(ctx workflow.Context, in OrderInput) error {
 	}
 
 	// v3 introduces the deterministically-broken drone, so it tunes its own retry:
-	// retry forever (MaximumAttempts: 0) with the backoff capped at droneAttempt, so a
-	// failing order stays red/Running and never fails/completes — the regression the
-	// demo rolls back. The drone's per-attempt wait is activity-side, so no workflow timer.
+	// unlimited attempts (MaximumAttempts: 0) with the backoff capped at
+	// droneRetryMaxInterval, so a failing order stays red/Running — the regression the demo
+	// rolls back. The drone step bounds that retry by duration (see droneRetryWindow). The
+	// drone's per-attempt wait is activity-side, so no workflow timer.
 	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: stepDwell + 15*time.Second,
-		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 0, MaximumInterval: droneAttempt},
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 0, MaximumInterval: droneRetryMaxInterval},
 	})
 
 	state.CurrentStep = 0
@@ -47,11 +60,15 @@ func PizzaOrderV3(ctx workflow.Context, in OrderInput) error {
 	}
 
 	// The drone is deterministically broken, so mark this step failing as we enter it.
-	// With unlimited native retry this Get blocks until the activity succeeds (it never
-	// does) or the workflow is cancelled, so the order stalls red/Running forever.
+	// Native retry keeps re-attempting it, so the order stalls red/Running until it is
+	// recovered onto a healthy version. If nobody recovers it, the schedule-to-close
+	// timeout stops the retry after droneRetryWindow and the workflow fails with the
+	// resulting activity error, which takes the order off the dashboard (it lists
+	// Running workflows only).
 	state.CurrentStep = 3
 	state.Failing = true
-	if err := workflow.ExecuteActivity(ctx, DroneDelivery, in).Get(ctx, nil); err != nil {
+	droneCtx := workflow.WithScheduleToCloseTimeout(ctx, droneRetryWindow)
+	if err := workflow.ExecuteActivity(droneCtx, DroneDelivery, in).Get(droneCtx, nil); err != nil {
 		return err
 	}
 
