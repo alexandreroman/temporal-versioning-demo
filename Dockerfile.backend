@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # --- build stage ---
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 
 COPY go.mod go.sum* ./
@@ -15,7 +15,7 @@ RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
         -o /out/backend ./cmd/backend
 
 # --- runtime stage ---
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 WORKDIR /app
 COPY --from=build /out/backend /app/backend
 ENV PORT=8080

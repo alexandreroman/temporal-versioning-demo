@@ -8,7 +8,7 @@ type: project
 
 The backend and worker pods set a hardened pod-level
 securityContext with `runAsNonRoot: true`. Both images are
-`gcr.io/distroless/static-debian12:nonroot`, whose `USER` is the
+`gcr.io/distroless/static-debian13:nonroot`, whose `USER` is the
 non-numeric name `nonroot`. With only `runAsNonRoot: true` the
 kubelet refuses to start the container:
 
