@@ -20,26 +20,38 @@ const (
 )
 
 // sseRegions are the named regions streamed to the browser on every frame.
-var sseRegions = []string{"orders", "versions", "controls"}
+var sseRegions = []string{"orders", "versions", "controls", "publishing"}
+
+// OrderSwitch pauses and resumes the start of new orders. *Generator
+// implements it; the Server only needs this narrow view of it.
+type OrderSwitch interface {
+	Pause()
+	Resume()
+	Paused() bool
+}
 
 // Server exposes the dashboard API and serves the SPA.
 type Server struct {
-	hub      *Hub
-	actions  *Actions
-	renderer *Renderer
-	frontend http.Handler
-	logger   *slog.Logger
+	hub         *Hub
+	actions     *Actions
+	orderSwitch OrderSwitch
+	renderer    *Renderer
+	frontend    http.Handler
+	logger      *slog.Logger
 }
 
 // NewServer builds a Server serving the SPA from the given file system (the
 // embedded frontend assets in production).
-func NewServer(hub *Hub, actions *Actions, renderer *Renderer, frontend fs.FS, logger *slog.Logger) *Server {
+func NewServer(hub *Hub, actions *Actions, orderSwitch OrderSwitch, renderer *Renderer, frontend fs.FS,
+	logger *slog.Logger,
+) *Server {
 	return &Server{
-		hub:      hub,
-		actions:  actions,
-		renderer: renderer,
-		frontend: http.FileServerFS(frontend),
-		logger:   logger,
+		hub:         hub,
+		actions:     actions,
+		orderSwitch: orderSwitch,
+		renderer:    renderer,
+		frontend:    http.FileServerFS(frontend),
+		logger:      logger,
 	}
 }
 
@@ -55,6 +67,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /rollback", s.handleRollbackModal)
 	mux.HandleFunc("GET /deploy/ramp", s.handleDeployRamp)
 	mux.HandleFunc("DELETE /modal", s.handleClose)
+	mux.HandleFunc("PUT /pause", s.handlePause)
+	mux.HandleFunc("DELETE /pause", s.handleResume)
 	mux.HandleFunc("POST /deploy", s.handleDeploy)
 	mux.HandleFunc("POST /rollback", s.handleRollback)
 	mux.HandleFunc("POST /orders/{id}/recover", s.handleRecoverOne)
@@ -100,6 +114,9 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 // writeFrame renders every SSE region for state and writes each as a named SSE
 // event. It returns false if writing to the client fails (connection closed).
 func (s *Server) writeFrame(w http.ResponseWriter, state DashboardState) bool {
+	// The pause switch is server state the poller knows nothing about, so it is
+	// read fresh for every frame. state is a copy: the hub's value is untouched.
+	state.OrdersPaused = s.orderSwitch.Paused()
 	var buf bytes.Buffer
 	for _, region := range sseRegions {
 		buf.Reset()
@@ -175,6 +192,34 @@ func (s *Server) handleDeployRamp(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleClose(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
+}
+
+// handlePause serves PUT /pause: new orders stop being started while in-flight
+// orders carry on. Like handleResume, it answers with an empty 200: the toggle
+// is redrawn by the republished SSE frame, not by this response.
+func (s *Server) handlePause(w http.ResponseWriter, _ *http.Request) {
+	s.orderSwitch.Pause()
+	s.logger.Info("order publishing paused")
+	s.republishLatest()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleResume serves DELETE /pause: the generator starts orders again from
+// its next tick.
+func (s *Server) handleResume(w http.ResponseWriter, _ *http.Request) {
+	s.orderSwitch.Resume()
+	s.logger.Info("order publishing resumed")
+	s.republishLatest()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+}
+
+// republishLatest pushes the latest state again so every connected browser
+// gets a frame carrying the new pause state (stamped by writeFrame) right away,
+// instead of on the next poll tick.
+func (s *Server) republishLatest() {
+	s.hub.Publish(s.hub.Latest())
 }
 
 // validVersion guards the friendly labels the UI may send.

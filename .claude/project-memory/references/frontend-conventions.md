@@ -23,8 +23,9 @@ in `frontend/index.html` and the Go templates and is self-describing.
   HTML fragments, not JSON, so per HTMX's own guidance they deliberately avoid
   the `/api/` prefix (which signals a stable JSON *data* API) and are named after
   the resource + UI need: `GET`/`POST /deploy`, `GET /deploy/ramp`,
-  `GET`/`POST /rollback`, `POST /orders/{id}/recover`, and the modal is closed
-  with `DELETE /modal` (a resource delete, not a generic `/close` verb).
+  `GET`/`POST /rollback`, `POST /orders/{id}/recover`, the modal is closed
+  with `DELETE /modal` (a resource delete, not a generic `/close` verb), and
+  order publishing is paused with `PUT /pause` and resumed with `DELETE /pause`.
   `GET /events` (SSE), `GET /healthz` and `/` (the SPA) are unchanged. When
   adding an endpoint, follow this scheme — do **not** reintroduce `/api/`.
 - **No per-version failure count.** Version cards show only `N in flight`. Every

@@ -45,6 +45,9 @@ type VersionCard struct {
 type DashboardState struct {
 	Orders   []Order
 	Versions []VersionCard
+	// OrdersPaused is stamped by the server at render time from its pause
+	// switch (see Server.writeFrame); the poller never sets it.
+	OrdersPaused bool
 }
 
 // VersionSummary mirrors the fields BuildState needs from a Temporal version summary.

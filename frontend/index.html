@@ -73,6 +73,7 @@
         --animate-card-collapse: card-collapse 0.5s ease 4s forwards;
         --animate-toast-out: toast-out 4s ease forwards;
         --animate-chip-pulse: chip-pulse 0.45s ease;
+        --animate-live-dot: live-dot 1.6s ease-out infinite;
 
         @keyframes pulse {
           0% {
@@ -95,6 +96,19 @@
           }
           100% {
             box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+          }
+        }
+
+        /* Green ring around the order-publishing toggle's "live" dot. */
+        @keyframes live-dot {
+          0% {
+            box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.6);
+          }
+          70% {
+            box-shadow: 0 0 0 5px rgba(22, 163, 74, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(22, 163, 74, 0);
           }
         }
 
@@ -231,9 +245,63 @@
         @apply ml-auto font-semibold opacity-80;
       }
 
+      /* Live orders header: the dimmed .sect label plus the order-publishing
+         toggle pushed right. The toggle is the label's sibling, not its child,
+         so .sect's opacity does not dim it. Its negative vertical margin keeps
+         the row as tall as a bare .sect, so both columns' first cards line up. */
+      .sect-row {
+        @apply mb-[13px] flex items-center gap-3;
+      }
+
+      .sect-row .sect {
+        @apply mb-0;
+      }
+
+      .publishing {
+        @apply -my-1 ml-auto flex;
+      }
+
+      /* Compact pill in the .btn / .recover-btn family: raised surface, border,
+         11px semibold. Running = pulsing green dot; paused = amber with a static
+         pause glyph. Disables itself while its request runs. */
+      .pub-btn {
+        @apply inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-line bg-raised px-2 py-1
+          font-sans text-[11px] font-semibold leading-none text-ink transition-colors;
+      }
+
+      .pub-btn:hover:not(:disabled) {
+        @apply bg-[#26262e];
+      }
+
+      .pub-btn:disabled {
+        @apply cursor-progress opacity-60;
+      }
+
+      .pub-dot {
+        @apply size-1.5 shrink-0 animate-live-dot rounded-full bg-green;
+      }
+
+      .pub-btn.paused {
+        @apply border-amber/50 bg-amber/10 text-amber;
+      }
+
+      .pub-btn.paused:hover:not(:disabled) {
+        @apply bg-amber/20;
+      }
+
+      /* Pause glyph: two vertical bars drawn by the side borders. */
+      .pub-btn.paused .pub-dot {
+        @apply h-2 w-[7px] animate-none rounded-none border-x-2 border-amber bg-transparent;
+      }
+
       /* ===== Live orders list ===== */
       .olist {
         @apply shrink-0;
+      }
+
+      /* Shown in place of the cards while publishing is paused and none remain. */
+      .orders-empty {
+        @apply m-0 py-6 text-center text-[12px] opacity-50;
       }
 
       /* Mobile (<=760px): the whole app scrolls and the columns stack with the
@@ -466,7 +534,9 @@
 
         .ver,
         .bar > span,
-        .chip {
+        .chip,
+        .pub-btn,
+        .pub-dot {
           transition: none;
           animation: none;
         }
@@ -655,7 +725,14 @@
 
       <div class="dbody">
         <section class="dleft">
-          <div class="sect">Live orders</div>
+          <!-- The order-publishing toggle (sse-swap="publishing") is streamed and
+               morphed like the controls row: PUT /pause pauses new order starts,
+               DELETE /pause resumes them. Both answer an empty 200; every browser
+               redraws the toggle from the SSE frame the server pushes right away. -->
+          <div class="sect-row">
+            <div class="sect">Live orders</div>
+            <div class="publishing" id="publishing" sse-swap="publishing" hx-swap="morph:innerHTML"></div>
+          </div>
           <div class="olist" id="orders" sse-swap="orders" hx-swap="morph:innerHTML"></div>
         </section>
 

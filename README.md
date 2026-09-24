@@ -92,8 +92,11 @@ graph TD
   `POST /deploy` (ramp or promote), `POST /rollback`, and
   `POST /orders/{id}/recover`. Their modal fragments are served
   by `GET /deploy` and `GET /rollback` and dismissed with
-  `DELETE /modal`. The SPA (`index.html`) is embedded into the
-  backend binary.
+  `DELETE /modal`. `PUT /pause` stops the backend from starting
+  new orders (in-flight orders carry on) and `DELETE /pause`
+  resumes it; both answer an empty 200 and every browser picks
+  up the new state from the next SSE frame, pushed right away.
+  The SPA (`index.html`) is embedded into the backend binary.
 - **Go backend** (`cmd/backend`) — polls Temporal
   (`DescribeWorkerDeployment` for routing config and version
   summaries, plus lists and `getState`-queries the open
@@ -423,6 +426,9 @@ The on-stage flow that exercises every guarantee:
 > the same modal. The **Workflows** panel lists each version with
 > a status chip (`CURRENT` / `RAMPING N%`) and an in-flight order
 > count, so the active Current and Ramping targets stay visible.
+> The **Pause orders** toggle in the **Live orders** header stops
+> new orders at any point while in-flight ones carry on;
+> **Resume orders** restarts the stream.
 
 1. **Steady state on v1.** Orders stream in on v1 (4 steps).
    The **Workflows** panel shows `v1` as Current.
