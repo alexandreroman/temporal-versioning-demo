@@ -60,6 +60,11 @@ func TestRendererRegions(t *testing.T) {
 			"1:12",               // order-1 elapsed (72s)
 			`class="order fail"`, // failing card styling (the red card is the failing cue)
 			`node err`,           // errored stepper node
+			// Illustrations and icons reference the index.html sprite by symbol id.
+			`<use href="#pizza-pepperoni"/>`, `<use href="#pizza-diavola"/>`,
+			`<use href="#step-cook"/>`,
+			`node cur step-cook`,  // current-step motion targets the step-* modifier class
+			`node err step-drone`, // v3 order stuck on its drone step
 		}},
 		{"versions", []string{
 			`vb b-v1`, `vb b-v2`, `vb b-v3`,
@@ -161,7 +166,8 @@ func TestRendererOrdersPausedEmptyState(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			out := render(t, r, "orders", tt.state)
-			got := strings.Contains(out, `id="orders-paused"`) && strings.Contains(out, "Order publishing is paused.")
+			got := strings.Contains(out, `id="orders-paused"`) && strings.Contains(out, "Order publishing is paused.") &&
+				strings.Contains(out, `<use href="#pizza-box-sleeping"/>`)
 			if got != tt.wantShown {
 				t.Errorf("paused empty state shown = %v, want %v\n--- output ---\n%s", got, tt.wantShown, out)
 			}

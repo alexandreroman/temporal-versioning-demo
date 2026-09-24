@@ -8,6 +8,8 @@
 {{- define "order" -}}
 <div class="order{{if .Failing}} fail{{end}}{{if .Done}} done{{end}}" id="order-{{.ID}}">
   <div class="oh">
+    {{- /* Illustrations are <symbol>s of the sprite in index.html, so fragments pushed over SSE reuse them. */ -}}
+    <svg class="pz" aria-hidden="true"><use href="#{{pizzaIcon .Pizza}}"/></svg>
     {{- template "badge" .Version -}}
     {{- if .Failing}}<button class="recover-btn" type="button" title="Recover {{.ID}}" aria-label="Recover {{.ID}}"
             hx-post="/orders/{{.ID}}/recover" hx-target="#toast" hx-swap="innerHTML" hx-target-error="#toast"
@@ -18,7 +20,10 @@
   </div>
   <div class="stepper" style="{{stepperStyle .}}">
     {{- range stepNodes . -}}
-    <div class="node {{.Class}}"><div class="dot">{{.Glyph}}</div><div class="lbl">{{.Label}}</div></div>
+    <div class="node {{.Class}} {{.Icon}}">
+      <div class="dot"><svg aria-hidden="true"><use href="#{{.Icon}}"/></svg></div>
+      <div class="lbl">{{.Label}}</div>
+    </div>
     {{- end -}}
   </div>
 </div>
@@ -27,7 +32,10 @@
 {{- define "orders" -}}
 {{- range .Orders}}{{template "order" .}}{{end -}}
 {{- if and .OrdersPaused (not .Orders) -}}
-<p class="orders-empty" id="orders-paused">Order publishing is paused.</p>
+<div class="orders-empty" id="orders-paused">
+  <svg class="orders-empty-art" aria-hidden="true"><use href="#pizza-box-sleeping"/></svg>
+  <p>Order publishing is paused.</p>
+</div>
 {{- end -}}
 {{- end -}}
 

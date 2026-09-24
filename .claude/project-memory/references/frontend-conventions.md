@@ -1,6 +1,6 @@
 ---
 name: "Frontend conventions and gotchas"
-description: "Non-derivable frontend directives and traps: no build / Tailwind Play CDN, zero JS (HTMX only), hypermedia URLs (never /api/), the @media-can't-@apply trap, morph-not-replace, 200-not-204, no per-version failure count"
+description: "Non-derivable frontend directives, visual theme and traps: no build / Tailwind Play CDN, zero JS (HTMX only), hypermedia URLs (never /api/), the @media-can't-@apply trap, morph-not-replace, 200-not-204, no per-version failure count"
 type: feedback
 ---
 
@@ -61,5 +61,11 @@ in `frontend/index.html` and the Go templates and is self-describing.
 - **HTMX won't swap on 204.** Modal-close / fragment-clear endpoints must return
   an **empty 200**, not 204, or the modal stays open.
 
-The theme follows [temporal.io/brand](https://temporal.io/brand): UV `#444ce7` is
-the accent and v1, v2 = green, v3 = amber (amber also = ramping).
+The look is a temporal.io-inspired violet space theme: deep violet background
+with radial glows and grid + stars overlays, Space Grotesk + IBM Plex Mono
+(mono for small labels), violet `#8B5CF6` UI accent, lime `#B6F35A` success,
+slate-blue `#7C8FB1`, glass cards (`white/4%` fill, `white/10%` border, blur).
+Version colours are fixed and independent of that palette, because the demo's
+colour-coding depends on them: v1 = UV `#444ce7`, v2 = green, v3 = amber (amber
+also = ramping). Order cards carry inline-SVG pizza illustrations and stepper
+step icons from a single `<symbol>` sprite in `index.html`.
