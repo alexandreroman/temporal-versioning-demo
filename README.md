@@ -136,7 +136,7 @@ build.
 - A running [temporal-k8s](https://github.com/alexandreroman/temporal-k8s)
   Kind cluster (Temporal Server + Temporal Worker
   Controller).
-- [Go](https://go.dev/) 1.26+
+- [Go](https://go.dev/) 1.27+
 - [GNU Make](https://www.gnu.org/software/make/)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/) and
   [Docker](https://www.docker.com/). The local stack uses
