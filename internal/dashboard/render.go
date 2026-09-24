@@ -6,18 +6,52 @@ import (
 	"html/template"
 	"io"
 	"strconv"
+
+	"github.com/alexandreroman/temporal-versioning-demo/internal/pizza"
 )
 
 //go:embed templates/*.tmpl
 var templateFS embed.FS
 
-// stepNode is the per-stepper-node view model: its CSS state class, the glyph
-// shown inside the dot, and the step label.
+// stepNode is the per-stepper-node view model: its CSS state class, the sprite
+// icon shown inside the dot, and the step label.
 type stepNode struct {
 	Class string // "" | "done" | "cur" | "err"
-	Glyph string // "" | "✓" | "✕"
+	// Icon is the sprite symbol id (e.g. "step-cook"). The template also adds it
+	// to the node as a modifier class, so the CSS can animate each step's icon.
+	Icon  string
 	Label string
 }
+
+// pizzaIcons maps each pizza.Menu name to the symbol id of its illustration in
+// the SVG sprite of frontend/index.html.
+var pizzaIcons = map[string]string{
+	"Margherita":       "pizza-margherita",
+	"Pepperoni":        "pizza-pepperoni",
+	"Quattro Formaggi": "pizza-quattro-formaggi",
+	"Marinara":         "pizza-marinara",
+	"Capricciosa":      "pizza-capricciosa",
+	"Diavola":          "pizza-diavola",
+	"Hawaiian":         "pizza-hawaiian",
+	"Veggie Supreme":   "pizza-veggie-supreme",
+}
+
+// stepIcons maps each stepper label to the symbol id of its icon in the SVG
+// sprite of frontend/index.html.
+var stepIcons = map[pizza.StepLabel]string{
+	pizza.StepReceived:       "step-new",
+	pizza.StepCooking:        "step-cook",
+	pizza.StepQualityCheck:   "step-qc",
+	pizza.StepOutForDelivery: "step-out",
+	pizza.StepDroneDelivery:  "step-drone",
+	pizza.StepDelivered:      "step-done",
+}
+
+// Fallback sprite symbols for names the maps above do not know.
+const (
+	defaultPizzaIcon = "pizza-margherita"
+	defaultStepIcon  = "step-generic"
+)
 
 // toastView is the view model for the toast template.
 type toastView struct {
@@ -200,6 +234,7 @@ func funcMap() template.FuncMap {
 		"versionClass":        versionClass,
 		"elapsed":             formatElapsed,
 		"stepNodes":           stepNodes,
+		"pizzaIcon":           pizzaIcon,
 		"stepperStyle":        stepperStyle,
 		"barWidth":            func(pct int) int { return max(0, min(100, pct)) },
 		"hasRamping":          hasRamping,
@@ -246,18 +281,36 @@ func formatElapsed(seconds int) string {
 	return fmt.Sprintf("%d:%02d", seconds/60, seconds%60)
 }
 
+// pizzaIcon returns the sprite symbol id of the pizza's illustration, falling
+// back to the Margherita for an unknown or empty name.
+func pizzaIcon(name string) string {
+	if id, ok := pizzaIcons[name]; ok {
+		return id
+	}
+	return defaultPizzaIcon
+}
+
+// stepIcon returns the sprite symbol id of the step's icon, falling back to a
+// generic dot for an unknown label.
+func stepIcon(label pizza.StepLabel) string {
+	if id, ok := stepIcons[label]; ok {
+		return id
+	}
+	return defaultStepIcon
+}
+
 // stepNodes computes the per-node stepper state for an order: the done/current/
-// error class and glyph.
+// error class and the step icon.
 func stepNodes(o Order) []stepNode {
 	nodes := make([]stepNode, len(o.Steps))
 	for i, label := range o.Steps {
-		n := stepNode{Label: string(label)}
+		n := stepNode{Icon: stepIcon(label), Label: string(label)}
 		switch {
 		case o.Done || i < o.CurrentStep:
-			n.Class, n.Glyph = "done", "✓"
+			n.Class = "done"
 		case i == o.CurrentStep:
 			if o.Failing {
-				n.Class, n.Glyph = "err", "✕"
+				n.Class = "err"
 			} else {
 				n.Class = "cur"
 			}
