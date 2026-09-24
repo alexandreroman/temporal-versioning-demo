@@ -62,7 +62,7 @@ func main() {
 	gen := dashboard.NewGenerator(c, taskQueue, orderInterval, int(time.Now().Unix()), logger)
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           dashboard.NewServer(hub, actions, renderer, frontend.Assets, logger).Routes(),
+		Handler:           dashboard.NewServer(hub, actions, gen, renderer, frontend.Assets, logger).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

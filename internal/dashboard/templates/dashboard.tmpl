@@ -26,6 +26,9 @@
 
 {{- define "orders" -}}
 {{- range .Orders}}{{template "order" .}}{{end -}}
+{{- if and .OrdersPaused (not .Orders) -}}
+<p class="orders-empty" id="orders-paused">Order publishing is paused.</p>
+{{- end -}}
 {{- end -}}
 
 {{- define "version" -}}
@@ -57,6 +60,23 @@
 <button class="btn danger" type="button"
         hx-get="/rollback" hx-target="#modal-host" hx-swap="innerHTML"
         hx-target-error="#toast"{{if not (hasRamping .Versions)}} disabled{{end}}>Rollback</button>
+{{- end -}}
+
+{{- define "publishing" -}}
+{{- /* . is a DashboardState. The stable button id lets idiomorph morph it in place across states. */ -}}
+{{- if .OrdersPaused -}}
+<button id="publishing-toggle" class="pub-btn paused" type="button" aria-pressed="true"
+        title="Start new orders again"
+        hx-delete="/pause" hx-swap="none" hx-target-error="#toast" hx-disabled-elt="this">
+  <span class="pub-dot" aria-hidden="true"></span>Resume orders
+</button>
+{{- else -}}
+<button id="publishing-toggle" class="pub-btn" type="button" aria-pressed="false"
+        title="Stop starting new orders"
+        hx-put="/pause" hx-swap="none" hx-target-error="#toast" hx-disabled-elt="this">
+  <span class="pub-dot" aria-hidden="true"></span>Pause orders
+</button>
+{{- end -}}
 {{- end -}}
 
 {{- define "toast" -}}

@@ -10,9 +10,17 @@ import (
 	"testing"
 )
 
-// newTestServer builds a Server with a live hub and renderer but no Temporal
-// client. It is suitable for handlers that only render fragments (deploy/ramp,
-// rollback, modal) and never touch s.actions.
+// fakeOrderSwitch is an in-memory OrderSwitch standing in for the Generator.
+type fakeOrderSwitch struct{ paused bool }
+
+func (f *fakeOrderSwitch) Pause()       { f.paused = true }
+func (f *fakeOrderSwitch) Resume()      { f.paused = false }
+func (f *fakeOrderSwitch) Paused() bool { return f.paused }
+
+// newTestServer builds a Server with a live hub, renderer and a fake order
+// switch but no Temporal client. It is suitable for handlers that only render
+// fragments (deploy/ramp, rollback, modal) or toggle the switch, and never touch
+// s.actions. The frontend is a 404 stub so Routes() can be exercised.
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	renderer, err := NewRenderer()
@@ -20,9 +28,11 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatalf("NewRenderer: %v", err)
 	}
 	return &Server{
-		hub:      NewHub(),
-		renderer: renderer,
-		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		hub:         NewHub(),
+		orderSwitch: &fakeOrderSwitch{},
+		renderer:    renderer,
+		frontend:    http.NotFoundHandler(),
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 }
 
