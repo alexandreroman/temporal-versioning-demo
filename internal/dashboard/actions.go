@@ -327,7 +327,12 @@ func (a *Actions) resetWithMove(ctx context.Context, exec *commonpb.WorkflowExec
 		Reason:                    "recover stuck orders: bad drone-delivery build",
 		RequestId:                 uuid.NewString(),
 		WorkflowTaskFinishEventId: resetPoint,
-		ResetReapplyType:          enumspb.RESET_REAPPLY_TYPE_SIGNAL,
+		// Reapply signals only: exclude every other reapplyable event type. CANCEL_REQUEST is left out because
+		// it is deprecated and unimplemented.
+		ResetReapplyExcludeTypes: []enumspb.ResetReapplyExcludeType{
+			enumspb.RESET_REAPPLY_EXCLUDE_TYPE_UPDATE,
+			enumspb.RESET_REAPPLY_EXCLUDE_TYPE_NEXUS,
+		},
 		PostResetOperations: []*workflowpb.PostResetOperation{{
 			Variant: &workflowpb.PostResetOperation_UpdateWorkflowOptions_{
 				UpdateWorkflowOptions: &workflowpb.PostResetOperation_UpdateWorkflowOptions{
