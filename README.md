@@ -62,10 +62,12 @@ default.)
 | `v3`    | Received → Cooking → Quality check → Drone delivery → Delivered   | Drone always fails; stalls. |
 
 `v3` is intentionally buggy: its Drone delivery activity
-always errors, so v3 orders retry forever via Temporal's
+always errors, so v3 orders keep retrying via Temporal's
 native durable retry, go red, and stall (Running) until they
-are recovered onto the healthy version — they never
-fail/complete.
+are recovered onto the healthy version. An order nobody
+recovers retries for up to 15 minutes, then fails and leaves
+the dashboard, so a demo left unattended does not keep burning
+Temporal actions.
 
 ## Architecture
 
@@ -433,8 +435,9 @@ The on-stage flow that exercises every guarantee:
    Quality check. v1 drains and is sunset by the controller.
 4. **Ship v3 and ramp to 25%.** Run `make deploy-v3`, wait
    for the pod, then ramp v3 to 25%. About 25% of
-   new orders reach the Drone step, go **red** with a retry
-   count, and stall. v2 orders are unaffected.
+   new orders reach the Drone step, go **red**, and stall
+   while Temporal keeps retrying the drone in the background.
+   v2 orders are unaffected.
 5. **Rollback.** Click **Rollback**. The ramp drops to 0 and
    100% of new orders go to v2 again. The already-stuck v3
    orders stay red — rollback caps the blast radius but does

@@ -22,8 +22,8 @@ var (
 	// completed (all-green) order stays on the dashboard before its workflow closes and
 	// the card leaves the board.
 	deliveredDwell = 7 * time.Second
-	// droneAttempt is how long each (failing) drone delivery attempt takes; it paces the
-	// v3 retry cadence from the activity side so no workflow timer is needed.
+	// droneAttempt is how long each (failing) drone delivery attempt takes. The wait
+	// between attempts is the v3 retry backoff (see droneRetryMaxInterval in workflow_v3.go).
 	droneAttempt = 5 * time.Second
 )
 
@@ -72,7 +72,8 @@ func Deliver(ctx context.Context, in OrderInput) error {
 }
 
 // DroneDelivery is the buggy v3 step: each attempt spends droneAttempt simulating the
-// flight, then always fails, so v3 orders stall and go red until they are recovered.
+// flight, then always fails, so v3 orders stall and go red until they are recovered
+// (or until the v3 workflow's drone retry window runs out).
 func DroneDelivery(ctx context.Context, in OrderInput) error {
 	if err := dwell(ctx, droneAttempt); err != nil {
 		return err

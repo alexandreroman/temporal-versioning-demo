@@ -1,6 +1,6 @@
 ---
 name: "Demo timing and the v3 drone regression"
-description: "Step/Delivered dwell values and why Delivered is separate; order cadence and ramp steps; v3 drone always-fails with native unlimited retry"
+description: "Step/Delivered dwell values and why Delivered is separate; order cadence and ramp steps; v3 drone always fails, retried for up to a 15 min window"
 type: project
 ---
 
@@ -18,10 +18,23 @@ type: project
   ~4 s then collapses it; `DeliveredDwell` (7 s) is sized to outlast that collapse
   so the node isn't removed mid-animation. See [[frontend-conventions]].
 - **v3 regression:** the Drone delivery activity always fails, using Temporal's
-  **native unlimited** retry (`MaximumAttempts: 0`, `MaximumInterval` capped to
-  keep the cadence lively). The order stalls **red and stays Running forever — it
-  never ends `Failed`**; there is no manual retry loop and no retry counter. Each
-  failing attempt takes ~5 s (`droneAttempt`).
+  native retry with unlimited attempts (`MaximumAttempts: 0`; default 1 s
+  initial interval ×2, capped at a 30 s `MaximumInterval`), bounded by
+  duration: the drone call carries a `ScheduleToCloseTimeout` of
+  `droneRetryWindow` (15 min, a package `var` in `workflow_v3.go`). An order
+  stalls **red/Running until it is recovered**; one nobody recovers fails after
+  the window and leaves the dashboard. There is no manual retry loop and no
+  retry counter. Each failing attempt takes ~5 s (`droneAttempt`), so in steady
+  state an attempt lands roughly every 35 s.
+- **Why the backoff cap and the window:** each drone retry is a billable
+  Temporal Cloud action. The 30 s cap keeps that count low (the dashboard shows
+  no retry counter, so the cadence is invisible there) and the window stops it
+  entirely. The window is a duration (not an attempt count) so it reads plainly
+  and stays independent of the retry cadence; 15 min covers a live demo
+  (stuck orders get recovered within minutes) and caps a stuck order at
+  ~25-30 attempts.
+- The Temporal Go test env silently caps `MaximumAttempts: 0` at 10 attempts, so
+  the window test shrinks `droneRetryWindow` below that span to prove it bites.
 - All dwell is activity-side, never workflow timers — see
   [[workflow-waits-activity-side]].
 
