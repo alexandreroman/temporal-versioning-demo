@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,6 +38,40 @@ func TestPauseRoutes(t *testing.T) {
 			}
 			if sw.paused != tt.wantPaused {
 				t.Errorf("paused = %v, want %v", sw.paused, tt.wantPaused)
+			}
+		})
+	}
+}
+
+// TestPauseRoutesReportSwitchErrors checks that a failing switch answers with an
+// error status and a toast, and leaves the publishing state as it was.
+func TestPauseRoutesReportSwitchErrors(t *testing.T) {
+	tests := []struct {
+		name        string
+		method      string
+		startPaused bool
+		wantToast   string
+	}{
+		{"PUT failure", http.MethodPut, false, "Pause failed: temporal down"},
+		{"DELETE failure", http.MethodDelete, true, "Resume failed: temporal down"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestServer(t)
+			sw := &fakeOrderSwitch{paused: tt.startPaused, err: errors.New("temporal down")}
+			s.orderSwitch = sw
+			rec := httptest.NewRecorder()
+
+			s.Routes().ServeHTTP(rec, httptest.NewRequest(tt.method, "/pause", nil))
+
+			if rec.Code != http.StatusInternalServerError {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+			}
+			if body := rec.Body.String(); !strings.Contains(body, tt.wantToast) {
+				t.Errorf("body = %q, want a toast containing %q", body, tt.wantToast)
+			}
+			if sw.paused != tt.startPaused {
+				t.Errorf("paused = %v, want it unchanged at %v", sw.paused, tt.startPaused)
 			}
 		})
 	}
