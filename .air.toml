@@ -18,8 +18,14 @@ tmp_dir = "tmp"
 
 # Live-reload proxy: serves the dashboard on :8090, injects a reload script into
 # HTML responses, and refreshes the browser after each successful rebuild. It
-# forwards to the app on :8080; SSE (text/event-stream) responses pass through.
+# forwards to the app on :8080.
 [proxy]
   enabled = true
   proxy_port = 8090
   app_port = 8080
+  # app_start_timeout (ms) bounds both how long the proxy retries an app that
+  # is still starting and the whole lifetime of a proxied response, so it caps
+  # how long the /events SSE stream stays open before htmx reconnects. Air's
+  # default (5 s) would cut the stream every 5 s; 5 min keeps reconnects rare
+  # while a dead backend still errors out within 5 min.
+  app_start_timeout = 300000
