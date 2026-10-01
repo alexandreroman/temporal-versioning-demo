@@ -96,12 +96,15 @@ graph TD
   new orders (in-flight orders carry on) and `DELETE /pause`
   resumes it; both answer an empty 200 and every browser picks
   up the new state from the next SSE frame, pushed right away.
+  Order publishing also stops on its own after
+  `PIZZA_PUBLISHING_TIMEOUT` (default `15m`); resuming restarts
+  that countdown.
   The SPA (`index.html`) is embedded into the backend binary.
 - **Go backend** (`cmd/backend`) — polls Temporal
   (`DescribeWorkerDeployment` for routing config and version
   summaries, plus lists and `getState`-queries the open
   `PizzaOrder` workflows), serves the SPA, drives the routing
-  and recovery actions, and runs an order generator that
+  and recovery actions, and runs order publishing, which
   starts one order every few seconds so there is always live
   traffic. Each worker reports its friendly version
   (`v1`/`v2`/`v3`) and step progress through the **`getState`
@@ -124,9 +127,10 @@ build.
 | Module                 | Description                                        |
 | ---------------------- | -------------------------------------------------- |
 | `cmd/worker`           | Versioned Temporal worker (Pinned behaviour).      |
-| `cmd/backend`          | REST + SSE API, state poller, actions, generator.  |
+| `cmd/backend`          | REST + SSE API, poller, actions, order publishing. |
 | `internal/pizza`       | Pizza workflows, activities and shared types.      |
 | `internal/dashboard`   | State model, poller, actions, SSE hub, server.     |
+| `internal/publishing`  | Timed order publishing (auto-off).                 |
 | `frontend`             | Single-page Pizza Tracker dashboard.               |
 | `k8s/base`             | Kustomize base manifests for the demo deployment.  |
 | `k8s/v2`, `k8s/v3`     | Version overlays that ship the v2/v3 worker.       |

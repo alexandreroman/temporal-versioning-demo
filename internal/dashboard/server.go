@@ -22,11 +22,12 @@ const (
 // sseRegions are the named regions streamed to the browser on every frame.
 var sseRegions = []string{"orders", "versions", "controls", "publishing"}
 
-// OrderSwitch pauses and resumes the start of new orders. *Generator
-// implements it; the Server only needs this narrow view of it.
+// OrderSwitch pauses and resumes the start of new orders. *publishing.Switch
+// implements it; the Server only needs this narrow view of it. Paused must be
+// a cheap read: writeFrame calls it for every SSE frame.
 type OrderSwitch interface {
-	Pause()
-	Resume()
+	Pause(ctx context.Context) error
+	Resume(ctx context.Context) error
 	Paused() bool
 }
 
@@ -114,8 +115,8 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 // writeFrame renders every SSE region for state and writes each as a named SSE
 // event. It returns false if writing to the client fails (connection closed).
 func (s *Server) writeFrame(w http.ResponseWriter, state DashboardState) bool {
-	// The pause switch is server state the poller knows nothing about, so it is
-	// read fresh for every frame. state is a copy: the hub's value is untouched.
+	// The pause switch is state the poller knows nothing about, so its cached
+	// value is read for every frame. state is a copy: the hub's value is untouched.
 	state.OrdersPaused = s.orderSwitch.Paused()
 	var buf bytes.Buffer
 	for _, region := range sseRegions {
@@ -196,19 +197,32 @@ func (s *Server) handleClose(w http.ResponseWriter, _ *http.Request) {
 
 // handlePause serves PUT /pause: new orders stop being started while in-flight
 // orders carry on. Like handleResume, it answers with an empty 200: the toggle
-// is redrawn by the republished SSE frame, not by this response.
-func (s *Server) handlePause(w http.ResponseWriter, _ *http.Request) {
-	s.orderSwitch.Pause()
+// is redrawn by the republished SSE frame, not by this response. Errors route
+// to #toast and leave the toggle as it was.
+func (s *Server) handlePause(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), routingTimeout)
+	defer cancel()
+	if err := s.orderSwitch.Pause(ctx); err != nil {
+		s.logger.Warn("pause orders failed", "err", err)
+		s.writeError(w, http.StatusInternalServerError, "Pause failed: "+err.Error())
+		return
+	}
 	s.logger.Info("order publishing paused")
 	s.republishLatest()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 }
 
-// handleResume serves DELETE /pause: the generator starts orders again from
-// its next tick.
-func (s *Server) handleResume(w http.ResponseWriter, _ *http.Request) {
-	s.orderSwitch.Resume()
+// handleResume serves DELETE /pause: orders start again, with a full
+// publishing window before they stop on their own.
+func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), routingTimeout)
+	defer cancel()
+	if err := s.orderSwitch.Resume(ctx); err != nil {
+		s.logger.Warn("resume orders failed", "err", err)
+		s.writeError(w, http.StatusInternalServerError, "Resume failed: "+err.Error())
+		return
+	}
 	s.logger.Info("order publishing resumed")
 	s.republishLatest()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

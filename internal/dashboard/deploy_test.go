@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -10,11 +11,30 @@ import (
 	"testing"
 )
 
-// fakeOrderSwitch is an in-memory OrderSwitch standing in for the Generator.
-type fakeOrderSwitch struct{ paused bool }
+// fakeOrderSwitch is an in-memory OrderSwitch standing in for the publishing
+// switch. When err is set, Pause and Resume fail with it and leave the state
+// untouched.
+type fakeOrderSwitch struct {
+	paused bool
+	err    error
+}
 
-func (f *fakeOrderSwitch) Pause()       { f.paused = true }
-func (f *fakeOrderSwitch) Resume()      { f.paused = false }
+func (f *fakeOrderSwitch) Pause(context.Context) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.paused = true
+	return nil
+}
+
+func (f *fakeOrderSwitch) Resume(context.Context) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.paused = false
+	return nil
+}
+
 func (f *fakeOrderSwitch) Paused() bool { return f.paused }
 
 // newTestServer builds a Server with a live hub, renderer and a fake order

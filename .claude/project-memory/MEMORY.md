@@ -23,3 +23,4 @@
 - [Verifying the rollout flow across deployment modes](references/verifying-rollout-across-modes.md) — modes share host :7233 so verify sequentially; drive via POST /deploy (stop 0/1/2), /rollback, /orders/{id}/recover; ground-truth via `deployment describe` JSON.
 - [Casper workspace integration](references/casper-workspace-integration.md) — wiring lives in `.casper.json`; the repo stays tool-agnostic bar one guarded Makefile trio; the info panel mirrors `make endpoints` for the non-k8s flows only.
 - [No local machine paths in the repo](references/no-local-paths.md) — never cite /Users/…, ~/Projects/… or sibling local projects in repo files
+- [Order publishing auto-off](references/order-publishing-auto-off.md) — one activity, window = ScheduleToClose; startup keeps, resume resets.
