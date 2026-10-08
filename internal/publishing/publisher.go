@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/alexandreroman/temporal-versioning-demo/internal/pizza"
+	commonpb "go.temporal.io/api/common/v1"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
+	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
@@ -24,7 +26,8 @@ var errWorkerStopping = temporal.NewApplicationErrorWithOptions("worker stopping
 	temporal.ApplicationErrorOptions{Category: temporal.ApplicationErrorCategoryBenign})
 
 // Publisher hosts the PublishOrders activity, which starts pizza orders so
-// there are always in-flight workflows.
+// there are always in-flight workflows, and the CloseOrders activity, which
+// terminates the ones left open once publishing has stopped.
 type Publisher struct {
 	c         client.Client
 	taskQueue string
@@ -80,8 +83,8 @@ func (p *Publisher) publish(ctx context.Context, info activity.Info, workerStop 
 			continue
 		}
 		if !current {
-			// Paused (terminated), replaced or superseded: stop without one
-			// more order.
+			// Paused, timed out, replaced or superseded: stop without one more
+			// order.
 			return nil
 		}
 
@@ -98,8 +101,9 @@ func (p *Publisher) publish(ctx context.Context, info activity.Info, workerStop 
 }
 
 // isCurrent reports whether this attempt should keep publishing: its workflow
-// run is still Running and has not moved on to another attempt. A run that does
-// not exist any more counts as not current.
+// run is still Running, has not marked publishing as stopped and has not moved
+// on to another attempt. A run that does not exist any more counts as not
+// current.
 func (p *Publisher) isCurrent(ctx context.Context, info activity.Info) (bool, error) {
 	// Describe the run by its run ID, not just the workflow ID: after a Resume a
 	// new run holds the same workflow ID, and this attempt must not keep
@@ -115,6 +119,11 @@ func (p *Publisher) isCurrent(ctx context.Context, info activity.Info) (bool, er
 	if resp.GetWorkflowExecutionInfo().GetStatus() != enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING {
 		return false, nil
 	}
+	// A pause cancels this activity, but the cancellation only reaches it
+	// through a heartbeat response; the memo mark stops it before the next order.
+	if _, stopped := stopReason(resp.GetWorkflowExecutionInfo()); stopped {
+		return false, nil
+	}
 	for _, pending := range resp.GetPendingActivities() {
 		// Another attempt number means this one was given up on (its process
 		// froze past the heartbeat timeout, say) and retried elsewhere.
@@ -123,4 +132,62 @@ func (p *Publisher) isCurrent(ctx context.Context, info activity.Info) (bool, er
 		}
 	}
 	return true, nil
+}
+
+// CloseOrders terminates the pizza orders started before startedBefore that are
+// still running. The run calls it a while after publishing stopped, when only
+// stuck orders remain: v3 drone retries, or orders pinned to a version that has
+// no workers any more.
+//
+// Orders started from startedBefore on are left alone: they belong to a newer
+// publishing run. Terminating an order that has closed in the meantime is not
+// an error, so a retry after a partial failure picks up where it left off.
+func (p *Publisher) CloseOrders(ctx context.Context, startedBefore time.Time) error {
+	orders, err := p.openOrdersBefore(ctx, startedBefore)
+	if err != nil {
+		return err
+	}
+	closed := 0
+	for _, order := range orders {
+		err := p.c.TerminateWorkflow(ctx, order.GetWorkflowId(), order.GetRunId(), "order publishing stopped")
+		var notFound *serviceerror.NotFound
+		if errors.As(err, &notFound) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("terminate order %s: %w", order.GetWorkflowId(), err)
+		}
+		closed++
+	}
+	p.logger.Info("closed the orders left open after publishing stopped", "count", closed)
+	return nil
+}
+
+// openOrdersBefore lists every running PizzaOrder started before startedBefore.
+//
+// All pages are read before any order is terminated: terminating orders while
+// paging through a query on ExecutionStatus could shift the later pages.
+func (p *Publisher) openOrdersBefore(ctx context.Context, startedBefore time.Time,
+) ([]*commonpb.WorkflowExecution, error) {
+	query := fmt.Sprintf("WorkflowType = '%s' AND ExecutionStatus = 'Running' AND StartTime < '%s'",
+		pizza.WorkflowTypeName, startedBefore.UTC().Format(time.RFC3339Nano))
+	var orders []*commonpb.WorkflowExecution
+	var pageToken []byte
+	for {
+		// Namespace is left empty: the SDK fills it from the client's configuration.
+		resp, err := p.c.ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{
+			Query:         query,
+			NextPageToken: pageToken,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list open orders: %w", err)
+		}
+		for _, execution := range resp.GetExecutions() {
+			orders = append(orders, execution.GetExecution())
+		}
+		pageToken = resp.GetNextPageToken()
+		if len(pageToken) == 0 {
+			return orders, nil
+		}
+	}
 }

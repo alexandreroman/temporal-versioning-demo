@@ -9,8 +9,19 @@ import (
 // ActivityOptions is how OrderPublishing schedules PublishOrders.
 var ActivityOptions = activityOptions
 
-// ExecutionTimeoutMargin is how long a publishing run may outlive its window.
-const ExecutionTimeoutMargin = executionTimeoutMargin
+// CloseOrdersActivityOptions is how OrderPublishing schedules CloseOrders.
+var CloseOrdersActivityOptions = closeOrdersActivityOptions
+
+const (
+	// CloseDelay is how long a run waits after publishing stops before closing
+	// the orders left open.
+	CloseDelay = closeDelay
+	// CloseOrdersTimeout bounds CloseOrders, all attempts together.
+	CloseOrdersTimeout = closeOrdersTimeout
+	// ExecutionTimeoutMargin is how long a publishing run may outlive its
+	// window and closing phase.
+	ExecutionTimeoutMargin = executionTimeoutMargin
+)
 
 // ErrWorkerStopping is the error PublishOrders fails with when its worker stops.
 var ErrWorkerStopping = errWorkerStopping

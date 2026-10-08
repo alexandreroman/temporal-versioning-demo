@@ -98,7 +98,9 @@ graph TD
   up the new state from the next SSE frame, pushed right away.
   Order publishing also stops on its own after
   `PIZZA_PUBLISHING_TIMEOUT` (default `15m`); resuming restarts
-  that countdown.
+  that countdown. Ten minutes after publishing stops (paused or
+  timed out), the orders still open — the stuck ones — are
+  closed; resuming within that wait keeps them.
   The SPA (`index.html`) is embedded into the backend binary.
 - **Go backend** (`cmd/backend`) — polls Temporal
   (`DescribeWorkerDeployment` for routing config and version
@@ -432,7 +434,10 @@ The on-stage flow that exercises every guarantee:
 > count, so the active Current and Ramping targets stay visible.
 > The **Pause orders** toggle in the **Live orders** header stops
 > new orders at any point while in-flight ones carry on;
-> **Resume orders** restarts the stream.
+> **Resume orders** restarts the stream. Ten minutes after
+> publishing stops (paused or timed out), the orders still open
+> (the stuck ones) are closed; resume within that wait to keep
+> them.
 
 1. **Steady state on v1.** Orders stream in on v1 (4 steps).
    The **Workflows** panel shows `v1` as Current.

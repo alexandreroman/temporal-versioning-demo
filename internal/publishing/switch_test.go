@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/alexandreroman/temporal-versioning-demo/internal/publishing"
+	commonpb "go.temporal.io/api/common/v1"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
 	workflowpb "go.temporal.io/api/workflow/v1"
@@ -18,21 +19,24 @@ import (
 	"go.temporal.io/sdk/client"
 )
 
-// fakeClient records the starts and terminations the Switch issues and answers
-// describes with a canned status. Embedding the interface satisfies
-// client.Client; any other method would panic if called.
+// fakeClient records the starts and signals the Switch issues and answers
+// describes with a canned run ID, status and stop reason. Embedding the interface
+// satisfies client.Client; any other method would panic if called.
 type fakeClient struct {
 	client.Client
 
 	startErr       error
-	terminateErr   error
+	signalErr      error
+	describeRunID  string
 	describeStatus enumspb.WorkflowExecutionStatus
-	describeErr    error
+	// describeStopReason, when set, is the publishing-stopped mark in the memo.
+	describeStopReason string
+	describeErr        error
 
-	starts     []client.StartWorkflowOptions
-	workflows  []any
-	args       [][]any
-	terminated []string
+	starts    []client.StartWorkflowOptions
+	workflows []any
+	args      [][]any
+	signals   [][3]string // workflow ID, run ID, signal name
 }
 
 func (c *fakeClient) ExecuteWorkflow(_ context.Context, opts client.StartWorkflowOptions, workflow any,
@@ -44,9 +48,9 @@ func (c *fakeClient) ExecuteWorkflow(_ context.Context, opts client.StartWorkflo
 	return nil, c.startErr
 }
 
-func (c *fakeClient) TerminateWorkflow(_ context.Context, workflowID, _, _ string, _ ...any) error {
-	c.terminated = append(c.terminated, workflowID)
-	return c.terminateErr
+func (c *fakeClient) SignalWorkflow(_ context.Context, workflowID, runID, signalName string, _ any) error {
+	c.signals = append(c.signals, [3]string{workflowID, runID, signalName})
+	return c.signalErr
 }
 
 func (c *fakeClient) DescribeWorkflowExecution(_ context.Context, _, _ string,
@@ -55,8 +59,18 @@ func (c *fakeClient) DescribeWorkflowExecution(_ context.Context, _, _ string,
 		return nil, c.describeErr
 	}
 	return &workflowservice.DescribeWorkflowExecutionResponse{
-		WorkflowExecutionInfo: &workflowpb.WorkflowExecutionInfo{Status: c.describeStatus},
+		WorkflowExecutionInfo: &workflowpb.WorkflowExecutionInfo{
+			Execution: &commonpb.WorkflowExecution{WorkflowId: publishing.WorkflowID, RunId: c.describeRunID},
+			Status:    c.describeStatus,
+			Memo:      stoppedMemo(c.describeStopReason),
+		},
 	}, nil
+}
+
+// newRunningClient is a fakeClient whose publishing run is Running and still
+// publishing, as right after a start.
+func newRunningClient() *fakeClient {
+	return &fakeClient{describeRunID: "run-1", describeStatus: enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING}
 }
 
 func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -73,7 +87,7 @@ func TestSwitchStartPolicies(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &fakeClient{}
+			c := newRunningClient()
 			s := publishing.NewSwitch(c, testTimeout, discardLogger())
 
 			if err := tt.start(s, t.Context()); err != nil {
@@ -91,7 +105,10 @@ func TestSwitchStartPolicies(t *testing.T) {
 			if opts.WorkflowIDConflictPolicy != tt.wantConflict {
 				t.Errorf("conflict policy = %v, want %v", opts.WorkflowIDConflictPolicy, tt.wantConflict)
 			}
-			wantExecTimeout := testTimeout + publishing.ExecutionTimeoutMargin
+			// A pause can come at the very end of the window; the run then
+			// waits and closes the orders left open.
+			wantExecTimeout := testTimeout + publishing.CloseDelay + publishing.CloseOrdersTimeout +
+				publishing.ExecutionTimeoutMargin
 			if opts.WorkflowExecutionTimeout != wantExecTimeout {
 				t.Errorf("execution timeout = %v, want %v", opts.WorkflowExecutionTimeout, wantExecTimeout)
 			}
@@ -133,32 +150,38 @@ func TestSwitchStartFailureKeepsPaused(t *testing.T) {
 
 func TestSwitchPause(t *testing.T) {
 	unavailable := serviceerror.NewUnavailable("temporal down")
+	pauseRun1 := [][3]string{{publishing.WorkflowID, "run-1", publishing.PauseSignalName}}
 	tests := []struct {
-		name         string
-		terminateErr error
-		wantErr      error
-		wantPaused   bool
+		name        string
+		describeErr error
+		signalErr   error
+		wantErr     error
+		wantSignals [][3]string
+		wantPaused  bool
 	}{
-		{"terminates the countdown", nil, nil, true},
-		{"ignores an ended countdown", serviceerror.NewNotFound("workflow not found"), nil, true},
-		{"returns other errors", unavailable, unavailable, false},
+		{"signals the publishing run", nil, nil, nil, pauseRun1, true},
+		{"ignores an ended run", nil, serviceerror.NewNotFound("workflow not found"), nil, pauseRun1, true},
+		{"returns other signal errors", nil, unavailable, unavailable, pauseRun1, false},
+		{"has nothing to signal without a run", serviceerror.NewNotFound("workflow not found"), nil, nil, nil, true},
+		{"returns describe errors", unavailable, nil, unavailable, nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &fakeClient{}
+			c := newRunningClient()
 			s := publishing.NewSwitch(c, testTimeout, discardLogger())
 			if err := s.Ensure(t.Context()); err != nil {
 				t.Fatalf("Ensure: %v", err)
 			}
-			c.terminateErr = tt.terminateErr
+			c.describeErr = tt.describeErr
+			c.signalErr = tt.signalErr
 
 			err := s.Pause(t.Context())
 
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("err = %v, want %v", err, tt.wantErr)
 			}
-			if !slices.Equal(c.terminated, []string{publishing.WorkflowID}) {
-				t.Errorf("terminated %v, want [%s]", c.terminated, publishing.WorkflowID)
+			if !slices.Equal(c.signals, tt.wantSignals) {
+				t.Errorf("signals %v, want %v", c.signals, tt.wantSignals)
 			}
 			if got := s.Paused(); got != tt.wantPaused {
 				t.Errorf("Paused() = %v, want %v", got, tt.wantPaused)
@@ -167,26 +190,72 @@ func TestSwitchPause(t *testing.T) {
 	}
 }
 
+// TestSwitchRefreshAfterPause checks that a Refresh landing before the paused
+// run has processed the signal (Running, no stop mark yet) does not read
+// publishing as open again, while a newer run still does.
+func TestSwitchRefreshAfterPause(t *testing.T) {
+	tests := []struct {
+		name string
+		// resume, when set, resumes publishing between the pause and the refresh.
+		resume   bool
+		runID    string
+		wantOpen bool
+	}{
+		{"paused run without its mark yet stays paused", false, "run-1", false},
+		{"newer run opens", false, "run-2", true},
+		{"resumed run opens", true, "run-1", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newRunningClient()
+			s := publishing.NewSwitch(c, testTimeout, discardLogger())
+			if err := s.Ensure(t.Context()); err != nil {
+				t.Fatalf("Ensure: %v", err)
+			}
+			if err := s.Pause(t.Context()); err != nil {
+				t.Fatalf("Pause: %v", err)
+			}
+			if tt.resume {
+				if err := s.Resume(t.Context()); err != nil {
+					t.Fatalf("Resume: %v", err)
+				}
+			}
+			c.describeRunID = tt.runID
+
+			s.Refresh(t.Context())
+
+			if got := s.Paused(); got != !tt.wantOpen {
+				t.Errorf("Paused() = %v, want %v", got, !tt.wantOpen)
+			}
+		})
+	}
+}
+
 func TestSwitchRefresh(t *testing.T) {
+	running := enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING
 	tests := []struct {
 		name        string
 		startOpen   bool
 		status      enumspb.WorkflowExecutionStatus
+		stopReason  string
 		describeErr error
 		wantOpen    bool
 	}{
-		{"running opens", false, enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING, nil, true},
-		{"completed closes", true, enumspb.WORKFLOW_EXECUTION_STATUS_COMPLETED, nil, false},
-		{"canceled closes", true, enumspb.WORKFLOW_EXECUTION_STATUS_CANCELED, nil, false},
-		{"timed out closes", true, enumspb.WORKFLOW_EXECUTION_STATUS_TIMED_OUT, nil, false},
-		{"terminated closes", true, enumspb.WORKFLOW_EXECUTION_STATUS_TERMINATED, nil, false},
-		{"not found closes", true, 0, serviceerror.NewNotFound("workflow not found"), false},
-		{"other error keeps open", true, 0, serviceerror.NewUnavailable("temporal down"), true},
-		{"other error keeps closed", false, 0, serviceerror.NewUnavailable("temporal down"), false},
+		{"running opens", false, running, "", nil, true},
+		{"running after a timeout closes", true, running, "timeout", nil, false},
+		{"running after a pause closes", true, running, "paused", nil, false},
+		{"running after a pause stays closed", false, running, "paused", nil, false},
+		{"completed closes", true, enumspb.WORKFLOW_EXECUTION_STATUS_COMPLETED, "timeout", nil, false},
+		{"canceled closes", true, enumspb.WORKFLOW_EXECUTION_STATUS_CANCELED, "", nil, false},
+		{"timed out closes", true, enumspb.WORKFLOW_EXECUTION_STATUS_TIMED_OUT, "", nil, false},
+		{"terminated closes", true, enumspb.WORKFLOW_EXECUTION_STATUS_TERMINATED, "", nil, false},
+		{"not found closes", true, 0, "", serviceerror.NewNotFound("workflow not found"), false},
+		{"other error keeps open", true, 0, "", serviceerror.NewUnavailable("temporal down"), true},
+		{"other error keeps closed", false, 0, "", serviceerror.NewUnavailable("temporal down"), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &fakeClient{}
+			c := newRunningClient()
 			s := publishing.NewSwitch(c, testTimeout, discardLogger())
 			if tt.startOpen {
 				if err := s.Ensure(t.Context()); err != nil {
@@ -194,6 +263,7 @@ func TestSwitchRefresh(t *testing.T) {
 				}
 			}
 			c.describeStatus = tt.status
+			c.describeStopReason = tt.stopReason
 			c.describeErr = tt.describeErr
 
 			s.Refresh(t.Context())
@@ -202,6 +272,40 @@ func TestSwitchRefresh(t *testing.T) {
 				t.Errorf("Paused() = %v, want %v", got, !tt.wantOpen)
 			}
 		})
+	}
+}
+
+// TestSwitchEnsureKeepsStoppedRun checks that Ensure reads publishing as
+// paused when the run it keeps has already stopped publishing and is only
+// waiting to close the orders left open.
+func TestSwitchEnsureKeepsStoppedRun(t *testing.T) {
+	c := newRunningClient()
+	c.describeStopReason = "paused"
+	s := publishing.NewSwitch(c, testTimeout, discardLogger())
+
+	if err := s.Ensure(t.Context()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(c.starts) != 1 {
+		t.Fatalf("started %d workflows, want 1", len(c.starts))
+	}
+	if !s.Paused() {
+		t.Error("Paused() = false with a run that stopped publishing, want true")
+	}
+}
+
+func TestSwitchEnsureDescribeFailureKeepsPaused(t *testing.T) {
+	describeErr := serviceerror.NewUnavailable("temporal down")
+	c := newRunningClient()
+	c.describeErr = describeErr
+	s := publishing.NewSwitch(c, testTimeout, discardLogger())
+
+	if err := s.Ensure(t.Context()); !errors.Is(err, describeErr) {
+		t.Fatalf("err = %v, want %v", err, describeErr)
+	}
+	if !s.Paused() {
+		t.Error("Paused() = false after a failed describe, want true")
 	}
 }
 
@@ -217,7 +321,7 @@ func TestSwitchStartsPaused(t *testing.T) {
 func TestSwitchRunRefreshes(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		const interval = time.Second
-		c := &fakeClient{}
+		c := newRunningClient()
 		s := publishing.NewSwitch(c, testTimeout, discardLogger())
 		if err := s.Ensure(t.Context()); err != nil {
 			t.Fatalf("Ensure: %v", err)
